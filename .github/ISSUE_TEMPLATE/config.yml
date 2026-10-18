@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/benjuntilla/hardcover-oauth-mcp/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.
+  - name: Privacy or data requests
+    url: https://hardcover.benjuntilla.com/privacy#contact
+    about: Ask for a copy of your data or for it to be deleted by email.

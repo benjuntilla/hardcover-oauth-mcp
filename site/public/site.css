@@ -1,0 +1,291 @@
+/* Shared by the static pages and the Worker's consent and notice pages. Barebones, after hokialabs.com; follows the OS theme. */
+:root {
+  --bg: #ffffff;
+  --ink: #1a1a1a;
+  --ink-muted: #6b6864;
+  --rule: rgba(26, 26, 26, 0.14);
+  --warn: #8a5a00;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --ink: #ececec;
+    --ink-muted: #a39f97;
+    --rule: rgba(236, 236, 236, 0.16);
+    --warn: #e0a64a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 16px;
+  font-family: "Charter", "Bitstream Charter", Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+/* Centred. Prose keeps a 42rem measure; tables and the tools list get up to 64rem. */
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+main > *,
+header {
+  width: 100%;
+  max-width: 42rem;
+  margin-inline: auto;
+}
+
+main > details {
+  max-width: none;
+}
+
+h1 {
+  margin-block: 0.67em;
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+h2 {
+  margin-block: 0.83em;
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+h3 {
+  margin-block: 1em;
+  font-size: 1.17em;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+p {
+  margin-block: 1em;
+}
+
+/* Links keep the browser's own colours (blue, purple once visited), except that dark mode's default is lavender. */
+a {
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  a:link {
+    color: #58a6ff;
+  }
+}
+
+/* Links that leave the site start with an arrow, underlined with the text: the no-break space keeps it on the
+   link's line, and spaces at the edge of the arrow's box are underlined too. The serif fonts have no ↗, and the
+   symbol fonts browsers fall back to draw it a full line tall; system sans-serif fonts draw it letter-sized. It sits
+   smaller, level with the top of the letters. */
+a[href^="http://"]::before,
+a[href^="https://"]::before {
+  content: "↗\00a0";
+  content: "↗\00a0" / "";
+  font-family: system-ui, sans-serif;
+  font-size: 0.8em;
+  text-decoration-skip-spaces: none;
+  vertical-align: text-top;
+}
+
+code,
+pre {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 8px 0;
+  border-block: 1px solid var(--rule);
+}
+
+pre code {
+  font-size: inherit;
+}
+
+/* As wide as their content, centred: never narrower than the prose (so small tables line up with it), never wider than the page (wider ones scroll). */
+table {
+  display: block;
+  width: fit-content;
+  min-width: min(42rem, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+td:first-child code {
+  white-space: nowrap;
+}
+
+/* Tool descriptions get room so they don't wrap word by word. */
+td:nth-child(2) {
+  min-width: 13rem;
+}
+
+details {
+  margin-block: 1em;
+}
+
+summary {
+  max-width: 42rem;
+  margin-inline: auto;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+details[open] > summary {
+  margin-bottom: 0.5em;
+}
+
+li + li {
+  margin-top: 0.25em;
+}
+
+/* The landing page's contents, built from its sections (see astro.config.ts). */
+.toc ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-block: 1em;
+  padding: 0;
+  list-style: none;
+}
+
+.toc li + li {
+  margin-top: 0;
+}
+
+/* The navbar on every page, including the Worker's consent and notice pages. */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  justify-content: center;
+  padding-block: 0 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+header nav {
+  display: flex;
+  gap: 16px;
+}
+
+/* The current page, in text colour and in brackets that screen readers skip. */
+header a[aria-current="page"] {
+  color: inherit;
+  text-decoration: none;
+}
+
+header a[aria-current="page"]::before {
+  content: "[";
+  content: "[" / "";
+}
+
+header a[aria-current="page"]::after {
+  content: "]";
+  content: "]" / "";
+}
+
+/* Consent and notice pages */
+.muted {
+  color: var(--ink-muted);
+}
+
+.warn {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+fieldset {
+  margin: 1em 0;
+  padding: 0 0 8px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+legend {
+  padding: 8px 8px 0 0;
+  font-weight: 700;
+}
+
+label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 0;
+}
+
+input[type="checkbox"] {
+  flex: none;
+  margin-top: 2px;
+}
+
+label code {
+  color: var(--ink-muted);
+}
+
+.tag {
+  margin-left: 6px;
+  color: var(--warn);
+  font-size: 0.875em;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 1.5em;
+}
+
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+@media (min-width: 640px) {
+  body {
+    padding: 24px;
+  }
+}

@@ -1,0 +1,60 @@
+name: Report an issue
+description: Something broken, confusing, or missing in Hardcover MCP.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Don't paste tokens, cookies, or private reading data. Report security problems privately instead, as the [security policy](https://hardcover.benjuntilla.com/security) describes.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of issue
+      options:
+        - Something doesn't work
+        - A tool gives wrong or confusing results
+        - Feature request
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you asked for, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: instance
+    attributes:
+      label: Server
+      options:
+        - The public instance (hardcover.benjuntilla.com)
+        - My own deployment
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client
+      options:
+        - Claude (web, desktop, or mobile)
+        - Claude Code
+        - ChatGPT
+        - Cursor
+        - MCP Inspector
+        - Other
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: The tool involved, if you know it.
+      placeholder: hardcover_update_progress
+  - type: input
+    id: when
+    attributes:
+      label: When
+      description: Roughly when it happened, with your time zone, so it can be found in the logs (kept for 7 days).
+  - type: textarea
+    id: details
+    attributes:
+      label: Error messages or other details
