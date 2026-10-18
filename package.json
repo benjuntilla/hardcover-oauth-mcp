@@ -35,5 +35,11 @@
     "oxlint-tsgolint": "7.0.2004",
     "satteri": "0.10.5",
     "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.17",
+    "hono": "4.13.13",
+    "lodash": "4.18.1",
+    "valibot": "1.5.0"
   }
 }
