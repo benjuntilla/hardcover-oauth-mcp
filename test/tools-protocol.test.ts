@@ -1,6 +1,7 @@
 /**
  * The sessionful 2025 revisions of the MCP server: initialization hands out a
- * session, and the tool list only shows what the connection's scopes allow.
+ * session (and, from 2025-11-25, the server's icons), and the tool list only
+ * shows what the connection's scopes allow.
  */
 import { Array as Arr, Effect, ManagedRuntime, Option, Schema, String as Str, Struct, pipe } from "effect"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
@@ -8,6 +9,9 @@ import { post, toolHarness } from "#test/tools-harness.ts"
 import type { ToolHarness } from "#test/tools-harness.ts"
 
 const SESSION_PROTOCOL = "2025-06-18"
+const ICONS_PROTOCOL = "2025-11-25"
+const MCP_ORIGIN = "http://localhost"
+const SITE_PUBLIC = new URL("../site/public", import.meta.url).pathname
 const ACCEPTED = 202
 const NOT_FOUND = 404
 const DATA_PREFIX = "data:"
@@ -20,6 +24,9 @@ const Initialized = Schema.Struct({ protocolVersion: Schema.String })
 const ToolList = Schema.Struct({ tools: Schema.Array(Schema.Struct({ name: Schema.String })) })
 const ToolCalled = Schema.Struct({ isError: Schema.Boolean })
 const InitializeMessage = Schema.fromJsonString(Schema.Struct({ result: Initialized }))
+const Icon = Schema.Struct({ src: Schema.String })
+const ServerInfo = Schema.Struct({ icons: Schema.Array(Icon) })
+const IconsMessage = Schema.fromJsonString(Schema.Struct({ result: Schema.Struct({ serverInfo: ServerInfo }) }))
 const ToolListMessage = Schema.fromJsonString(Schema.Struct({ result: ToolList }))
 const ToolCallMessage = Schema.fromJsonString(Schema.Struct({ result: ToolCalled }))
 
@@ -92,6 +99,37 @@ const callsInSession = (inSession: SessionHeaders): Effect.Effect<void, Schema.S
     expect(unknown.status).toBe(NOT_FOUND)
   })
 
+const servesIcons = Effect.gen(function* servesIcons() {
+  const init = yield* post({
+    body: {
+      id: 1,
+      jsonrpc: "2.0",
+      method: "initialize",
+      params: { capabilities: {}, clientInfo: { name: "test", version: "1" }, protocolVersion: ICONS_PROTOCOL },
+    },
+    headers: {},
+  })
+  const message = yield* messageText(init).pipe(Effect.flatMap(Schema.decodeEffect(IconsMessage)))
+  const icons = pipe(
+    message.result.serverInfo.icons,
+    Arr.map((icon) => new URL(icon.src)),
+  )
+  expect(icons).not.toEqual([])
+  const served = yield* pipe(
+    icons,
+    Effect.forEach((url) =>
+      Effect.promise(() => Bun.file(`${SITE_PUBLIC}${url.pathname}`).exists()).pipe(
+        Effect.map((exists) => ({ exists, origin: url.origin })),
+      ),
+    ),
+  )
+  const expected = pipe(
+    icons,
+    Arr.map(() => ({ exists: true, origin: MCP_ORIGIN })),
+  )
+  expect(served).toEqual(expected)
+})
+
 const sessionFlow = Effect.gen(function* sessionFlow() {
   const inSession = yield* initialize
   yield* listsScopedTools(inSession)
@@ -104,4 +142,6 @@ describe("protocol", () => {
   afterAll(() => runtime.dispose())
 
   test("2025-06-18 clients get a session, and only the tools their scopes allow", () => runtime.runPromise(sessionFlow))
+
+  test("2025-11-25 clients get icons that the site serves from the server's own origin", () => runtime.runPromise(servesIcons))
 })

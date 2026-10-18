@@ -7,7 +7,7 @@
 import { Array as Arr, Effect, ErrorReporter, Layer, Logger, Option, Record as Rec, Scheduler, pipe } from "effect"
 import { HardcoverToolkit, HardcoverToolkitLive } from "#src/mcp/toolkit.ts"
 import { HttpRouter, HttpServer } from "effect/http"
-import { McpProtocol, McpServer, Toolkit } from "effect/ai"
+import { McpProtocol, McpSchema, McpServer, Toolkit } from "effect/ai"
 import { Session } from "#src/mcp/session.ts"
 import type { ToolPolicy } from "#src/mcp/define.ts"
 import { toolPolicy } from "#src/mcp/define.ts"
@@ -28,6 +28,17 @@ const SERVER_INFO = {
   version: "0.1.0",
   websiteUrl: "https://github.com/benjuntilla/hardcover-oauth-mcp",
 } as const
+
+/**
+ * The server's icons, served from site/public on the server's own origin: a bold
+ * outline that stays legible at small sizes, and the full line drawing.
+ * @param {string} origin The origin the client reached the server at.
+ * @returns {ReadonlyArray<McpSchema.Icon>} The icons.
+ */
+const icons = (origin: string): ReadonlyArray<McpSchema.Icon> => [
+  McpSchema.Icon.make({ mimeType: "image/png", sizes: ["48x48"], src: `${origin}/icon-48.png` }),
+  McpSchema.Icon.make({ mimeType: "image/png", sizes: ["512x512"], src: `${origin}/icon-512.png` }),
+]
 
 const PROTOCOLS: Arr.NonEmptyReadonlyArray<McpProtocol.ProtocolAdapter> = [
   McpProtocol.v2026_07_28,
@@ -85,12 +96,17 @@ const SyncScheduler = Layer.succeed(Scheduler.Scheduler, new Scheduler.MixedSche
 /**
  * A fetch handler serving `/mcp` for one connection. Only the tools its scopes
  * allow are registered, so `tools/list` shows exactly what it can call.
- * @param {Session["Service"]} session The connection.
+ * @param {object} options The connection and where the client reached it.
+ * @param {Session["Service"]} options.session The connection.
+ * @param {string} options.origin The origin the client reached the server at, for icon URLs.
  * @returns {ReturnType<typeof HttpRouter.toWebHandler>} The handler.
  */
-const makeMcpHandler = (
-  session: Session["Service"],
-): { readonly handler: (request: Request) => Promise<Response>; readonly dispose: () => Promise<void> } => {
+const makeMcpHandler = (options: {
+  readonly session: Session["Service"]
+  readonly origin: string
+}): { readonly handler: (request: Request) => Promise<Response>; readonly dispose: () => Promise<void> } => {
+  const { origin, session } = options
+  const serverIcons = icons(origin)
   const tools = pipe(
     Rec.values(HardcoverToolkit.tools),
     Arr.filter((tool) =>
@@ -107,6 +123,7 @@ const makeMcpHandler = (
     Layer.provideMerge(
       McpServer.layerHttp({
         allowSessionTermination: true,
+        icons: serverIcons,
         instructions: SERVER_INFO.instructions,
         name: SERVER_INFO.name,
         path: "/mcp",

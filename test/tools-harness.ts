@@ -37,7 +37,7 @@ const toolHarness = (scopes: ReadonlySet<string>): Layer.Layer<ToolHarness> =>
       const fake = yield* makeFakeHardcover
       const session = { graphql: fake.graphql, hcUserId: ME, librarianRoles: ["librarian"], scopes, supporter: true, username: "reader" }
       const mcp = yield* Effect.acquireRelease(
-        Effect.sync(() => makeMcpHandler(session)),
+        Effect.sync(() => makeMcpHandler({ origin: new URL(MCP_URL).origin, session })),
         (handler) => Effect.promise(() => handler.dispose()),
       )
       return { calls: fake.calls, clear: fake.clear, post: (request) => Effect.promise(() => mcp.handler(request)) }

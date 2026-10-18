@@ -22,7 +22,7 @@ interface ServerOptions {
 /** The servers of one connection. */
 class McpServers {
   readonly #options: ServerOptions
-  /** A refreshed token can carry fewer scopes than the grant, so there is one server per scope set. */
+  /** A refreshed token can carry fewer scopes than the grant, so there is one server per origin and scope set. */
   readonly #servers = new Map<string, McpHandler>()
 
   /**
@@ -46,28 +46,30 @@ class McpServers {
       if (Option.isNone(state)) {
         return reauthorize({ description: REVOKED_MESSAGE, request })
       }
-      const server = this.#serverFor(grant, state.value)
+      const server = this.#serverFor(grant, state.value, new URL(request.url).origin)
       return yield* Effect.promise(() => server.handler(request))
     })
   }
 
   /**
-   * The server for one scope set, built on first use.
+   * The server for one origin and scope set, built on first use.
    * @param {ForwardedGrant} grant The grant.
    * @param {ConnectionState} state The connection.
+   * @param {string} origin The origin the client reached the server at.
    * @returns {McpHandler} The server.
    */
-  #serverFor(grant: ForwardedGrant, state: ConnectionState): McpHandler {
-    const key = pipe(grant.scopes, Arr.sortBy(Order.String), Arr.join(" "))
+  #serverFor(grant: ForwardedGrant, state: ConnectionState, origin: string): McpHandler {
+    const key = pipe(grant.scopes, Arr.sortBy(Order.String), Arr.prepend(origin), Arr.join(" "))
     return Option.getOrElse(Option.fromNullishOr(this.#servers.get(key)), () => {
-      const server = makeMcpHandler({
+      const session = {
         graphql: makeExecutor(this.#options),
         hcUserId: state.hcUserId,
         librarianRoles: grant.librarianRoles,
         scopes: new Set(grant.scopes),
         supporter: grant.supporter,
         username: state.username,
-      })
+      }
+      const server = makeMcpHandler({ origin, session })
       this.#servers.set(key, server)
       return server
     })

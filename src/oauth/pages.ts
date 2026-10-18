@@ -9,7 +9,7 @@ const OK = 200
 const FOUND = 302
 const HTML_CONTENT = "text/html; charset=utf-8"
 const NO_STORE = "no-store"
-const FRAME_POLICY = "default-src 'none'; style-src 'self'; frame-ancestors 'none'"
+const FRAME_POLICY = "default-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'"
 /** The characters escaped in HTML text and attributes, as numeric character references. */
 const ESCAPES: Readonly<Record<string, string>> = {
   '"': "&#34;",
@@ -48,7 +48,8 @@ const REQUIREMENT_LABEL: Readonly<Record<Requirement, string>> = {
  */
 const page = (title: string, body: string): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark">
-<meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><link rel="stylesheet" href="/site.css"></head>
+<meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title><link rel="stylesheet" href="/site.css">
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"></head>
 <body><header><nav>${NAV_HTML}</nav></header>
 <main>${body}</main>
 </body></html>`
