@@ -235,16 +235,3 @@ With the app and `.env` from steps 1 and 2 above, the whole flow works on your m
 
 1. Run `mise run dev`. It serves the Worker in workerd at `http://localhost:1337`, with local KV and Durable Objects, and reloads on code changes. It builds the static pages (`README.md`, `PRIVACY.md`, `TERMS.md`, `SECURITY.md`, and `site/`) once at start, so restart it to see changes to them. You don't need a Cloudflare account.
 2. Connect a client on the same machine to `http://localhost:1337/mcp`, for example `claude mcp add --transport http hardcover-local http://localhost:1337/mcp`.
-
-## Development
-
-```sh
-mise run check      # format check, lint, prose lint, unused code, typecheck (bun check), and unit tests
-mise run test:e2e   # the Worker in workerd, a mock Hardcover, and a scripted MCP client
-```
-
-- **Unit tests** (`bun test`) cover the GraphQL guard, the executor's refresh and retry rules, scope handling, and every tool. Each tool runs through the real Effect MCP server, and the tests validate its GraphQL against Hardcover's published schema (`test/fixtures/hardcover-schema.graphql`).
-- **The end-to-end test** runs the Worker in workerd against a mock Hardcover, signing in and calling tools as an MCP client.
-- **The README tool table** comes from the toolkit (`mise run docs:tools`), and a unit test fails when it's stale.
-- **The schema index** behind `hardcover_find_operations` and `hardcover_describe_type` comes from Hardcover's API docs (`mise run schema:sync`).
-- **[Vale](https://vale.sh)** lints the prose on the site's pages with its standard style, Std (`mise run lint:prose`).
