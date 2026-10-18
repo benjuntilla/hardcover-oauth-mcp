@@ -14,7 +14,13 @@ if ! command -v mise >/dev/null 2>&1 && [ ! -x "$mise_bin" ]; then
   esac
   download="$(mktemp)"
   curl -fsSL -o "$download" "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-${platform}"
-  echo "${sha256}  ${download}" | shasum -a 256 --check --status
+  # Alpine's busybox has sha256sum but not shasum; macOS has shasum.
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256_check=(sha256sum -c)
+  else
+    sha256_check=(shasum -a 256 -c)
+  fi
+  echo "${sha256}  ${download}" | "${sha256_check[@]}" >/dev/null
   mkdir -p "$(dirname "$mise_bin")"
   install -m 755 "$download" "$mise_bin"
   rm -f "$download"
