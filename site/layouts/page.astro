@@ -1,5 +1,5 @@
 ---
-import { NAV } from "#root/site/routes.ts"
+import { NAV, SITE_DESCRIPTION } from "#root/site/routes.ts"
 
 interface Props {
   readonly title: string
@@ -23,6 +23,7 @@ const current = (href: string): Readonly<Record<string, string>> => (href === ro
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>{title}</title>
+    <meta name="description" content={SITE_DESCRIPTION} />
     <link rel="stylesheet" href="/site.css" />
   </head>
   <body>

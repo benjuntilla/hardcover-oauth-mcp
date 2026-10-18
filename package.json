@@ -2,7 +2,7 @@
   "name": "hardcover-oauth-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Remote MCP server for Hardcover.app with OAuth, running on Cloudflare Workers",
+  "description": "Remote MCP server for Hardcover. Lets Claude, ChatGPT, and other AI assistants manage your books, reading progress, reviews, and lists. Uses OAuth sign-in and runs on Cloudflare Workers, hosted or self-hosted.",
   "type": "module",
   "imports": {
     "#root/*": "./*",

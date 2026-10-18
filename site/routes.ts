@@ -7,6 +7,8 @@
 import { Array as Arr, Option, String as Str, pipe } from "effect"
 
 const SITE_NAME = "Hardcover MCP"
+const SITE_DESCRIPTION =
+  "Remote MCP server for Hardcover. Lets Claude, ChatGPT, and other AI assistants manage your books, reading progress, reviews, and lists. Uses OAuth sign-in and runs on Cloudflare Workers, hosted or self-hosted."
 const HOME = "/"
 const LEADING_SLASH = /^\//v
 
@@ -57,7 +59,7 @@ const pageSlug = (page: SitePage): string | undefined =>
  * Application module, not a public API.
  * @internal
  */
-export { NAV, PAGES, pageSlug, pageTitle }
+export { NAV, PAGES, SITE_DESCRIPTION, pageSlug, pageTitle }
 /**
  * Application module, not a public API.
  * @internal
