@@ -3,6 +3,7 @@
 
 [tools]
 bun = "1.4.3"
+hk = "2.7.0"
 vale = "3.24.0"
 
 # After `mise install`, install dependencies too, so setup is one command.
@@ -10,8 +11,8 @@ vale = "3.24.0"
 postinstall = { task = "install" }
 
 [tasks.install]
-description = "Install dependencies from bun.lock and Vale's style packages"
-run = ["bun install --frozen-lockfile", "vale sync"]
+description = "Install dependencies from bun.lock, Vale's style packages, and the git hooks in hk.pkl"
+run = ["bun install --frozen-lockfile", "vale sync", "hk install --mise"]
 
 [tasks.dev]
 description = "Run the Worker locally at http://localhost:1337 (workerd, local KV, and Durable Objects)"
