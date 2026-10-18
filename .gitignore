@@ -1,0 +1,13 @@
+node_modules/
+.alchemy/
+.env
+.env.*
+!.env.example
+.dev.vars
+*.log
+/.amp/in/
+dist/
+.astro/
+# Vale's style packages, downloaded by `vale sync`; the project vocabulary is tracked.
+/.vale/*
+!/.vale/config/

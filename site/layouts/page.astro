@@ -1,0 +1,38 @@
+---
+import { NAV } from "#root/site/routes.ts"
+
+interface Props {
+  readonly title: string
+  /** The route of the page being shown; its navbar link is marked current. */
+  readonly route: string
+}
+
+const { route, title }: Props = Astro.props
+/**
+ * Marks the link to the page being shown, which the stylesheet puts in brackets.
+ * @param {string} href The link's target.
+ * @returns {Record<string, string>} `aria-current` for the current page, else nothing.
+ */
+const current = (href: string): Readonly<Record<string, string>> => (href === route ? { "aria-current": "page" } : {})
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>{title}</title>
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        {NAV.map((link) => <a href={link.href} {...current(link.href)}>{link.label}</a>)}
+      </nav>
+    </header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

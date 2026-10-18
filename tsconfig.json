@@ -1,0 +1,28 @@
+{
+  "include": ["*.ts", "src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "types": ["@cloudflare/workers-types", "bun"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": false,
+        "allowedUnstableApis": ["effect/ai", "effect/http", "effect/ErrorReporter", "effect/Crypto", "effect/graphql"],
+        "allowedExperimentalApis": ["effect/graphql"]
+      }
+    ]
+  }
+}

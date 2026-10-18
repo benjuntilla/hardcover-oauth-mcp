@@ -1,0 +1,29 @@
+---
+import { Array as Arr, Option, Record as Rec, pipe } from "effect"
+import { PAGES, pageSlug, pageTitle } from "#root/site/routes.ts"
+import type { MarkdownInstance } from "astro"
+import Page from "#root/site/layouts/page.astro"
+import type { SitePage } from "#root/site/routes.ts"
+
+interface Props {
+  readonly page: SitePage
+}
+
+const { page }: Props = Astro.props
+const markdown = import.meta.glob<MarkdownInstance<Record<string, unknown>>>("/*.md", { eager: true })
+const { Content } = Option.getOrThrow(Rec.get(markdown, `/${page.file}`))
+
+/**
+ * One static path per page in site/routes.ts. Astro runs this on its own, so it may only use imports.
+ * @returns {ReadonlyArray<object>} The paths, each with its page.
+ */
+export const getStaticPaths = (): ReadonlyArray<{ params: { slug: string | undefined }; props: Props }> =>
+  pipe(
+    PAGES,
+    Arr.map((sitePage) => ({ params: { slug: pageSlug(sitePage) }, props: { page: sitePage } })),
+  )
+---
+
+<Page route={page.route} title={pageTitle(page)}>
+  <Content />
+</Page>

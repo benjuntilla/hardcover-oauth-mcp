@@ -1,0 +1,83 @@
+# Project toolchain and tasks. `mise install` once (it also installs dependencies), then `mise run <task>`.
+# Alchemy owns build, local dev, and deploys; every task below wraps it or Bun.
+
+[tools]
+bun = "1.4.3"
+vale = "3.24.0"
+
+# After `mise install`, install dependencies too, so setup is one command.
+[hooks]
+postinstall = { task = "install" }
+
+[tasks.install]
+description = "Install dependencies from bun.lock and Vale's style packages"
+run = ["bun install --frozen-lockfile", "vale sync"]
+
+[tasks.dev]
+description = "Run the Worker locally at http://localhost:1337 (workerd, local KV, and Durable Objects)"
+depends = ["install"]
+run = "bun alchemy dev --stage local"
+
+[tasks.deploy]
+description = "Deploy to Cloudflare. Extra arguments go to `alchemy deploy`, e.g. `mise run deploy --stage prod`"
+depends = ["install"]
+run = "bun alchemy deploy"
+
+[tasks.destroy]
+description = "Delete every Cloudflare resource of a stage, e.g. `mise run destroy --stage prod`"
+run = "bun alchemy destroy"
+
+[tasks.logs]
+description = "Tail Worker logs, e.g. `mise run logs --stage prod`"
+run = "bun alchemy logs --tail"
+
+[tasks.typecheck]
+description = "Type-check with bun check (same diagnostics as TypeScript 7's tsc, about 3x faster)"
+run = "bun check"
+
+[tasks.test]
+description = "Unit and integration tests (no network, no Cloudflare account)"
+run = "bun test"
+
+[tasks.lint]
+description = "Lint with oxlint: type-aware TypeScript rules (tsgolint) and every Effect rule (@effect/tsgo)"
+run = "bun oxlint"
+
+[tasks.fmt]
+description = "Format with oxfmt"
+run = "bun oxfmt"
+
+[tasks."lint:prose"]
+description = "Lint the site's pages with Vale's standard style (Std)"
+# Std's rules are all suggestions, which don't change Vale's exit code, so any alert fails the task.
+shell = "bash -c"
+run = "set -o pipefail; vale --output=line README.md PRIVACY.md TERMS.md SECURITY.md | (! grep .)"
+
+[tasks."fmt:check"]
+description = "Check formatting without writing"
+run = "bun oxfmt --check"
+
+[tasks.fix]
+description = "Format, then apply oxlint's safe fixes"
+run = ["bun oxfmt", "bun oxlint --fix", "bun oxfmt"]
+
+[tasks.knip]
+description = "Find unused files, exports, and dependencies with knip (run under Bun; Node's oxc-parser buffer allocation fails in small sandboxes)"
+run = "bun x knip-bun"
+
+[tasks.check]
+description = "Format check, lint, prose lint, unused-code check, typecheck, and test"
+depends = ["fmt:check", "lint", "lint:prose", "knip", "typecheck", "test"]
+
+[tasks."schema:sync"]
+description = "Regenerate src/generated/hardcover-api.json from hardcoverapp/hardcover-docs (optionally pass a git ref)"
+run = "bun scripts/sync-schema.ts"
+
+[tasks."test:e2e"]
+description = "End-to-end run: the Worker in workerd via `alchemy dev`, a mock Hardcover, and a scripted MCP client"
+env = { E2E = "1" }
+run = "bun test test/e2e.test.ts --timeout 60000"
+
+[tasks."docs:tools"]
+description = "Regenerate the README tool table from the toolkit"
+run = "bun scripts/tools-table.ts"
