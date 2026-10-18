@@ -2,8 +2,10 @@
 # Alchemy owns build, local dev, and deploys; every task below wraps it or Bun.
 
 [tools]
+actionlint = "1.7.12"
 bun = "1.4.3"
 vale = "3.24.0"
+zizmor = "1.31.1"
 
 # After `mise install`, install dependencies too, so setup is one command.
 [hooks]
@@ -53,6 +55,10 @@ description = "Lint the site's pages with Vale's standard style (Std)"
 shell = "bash -c"
 run = "set -o pipefail; vale --output=line README.md PRIVACY.md TERMS.md SECURITY.md | (! grep .)"
 
+[tasks."lint:actions"]
+description = "Lint the GitHub Actions workflows with actionlint"
+run = "actionlint"
+
 [tasks."fmt:check"]
 description = "Check formatting without writing"
 run = "bun oxfmt --check"
@@ -66,8 +72,14 @@ description = "Find unused files, exports, and dependencies with knip (run under
 run = "bun x knip-bun"
 
 [tasks.check]
-description = "Format check, lint, prose lint, unused-code check, typecheck, and test"
-depends = ["fmt:check", "lint", "lint:prose", "knip", "typecheck", "test"]
+description = "Format check, lint, prose and workflow lint, unused-code check, typecheck, and test"
+depends = ["fmt:check", "lint", "lint:prose", "lint:actions", "knip", "typecheck", "test"]
+
+[tasks.audit]
+description = "Security audit against live advisory data: zizmor on the workflows, bun audit on the dependencies the Worker ships"
+# zizmor's online audits (impostor commits, known-vulnerable actions) run when GH_TOKEN is set.
+# Only production dependencies reach the Worker bundle; build tools' advisories don't fail the audit.
+run = ["zizmor --persona=auditor .github", "bun audit --prod"]
 
 [tasks."schema:sync"]
 description = "Regenerate src/generated/hardcover-api.json from hardcoverapp/hardcover-docs (optionally pass a git ref)"
