@@ -4,6 +4,7 @@
 [tools]
 actionlint = "1.7.12"
 bun = "1.4.3"
+hk = "2.7.0"
 vale = "3.24.0"
 zizmor = "1.31.1"
 
@@ -12,8 +13,8 @@ zizmor = "1.31.1"
 postinstall = { task = "install" }
 
 [tasks.install]
-description = "Install dependencies from bun.lock and Vale's style packages"
-run = ["bun install --frozen-lockfile", "vale sync"]
+description = "Install dependencies from bun.lock, Vale's style packages, and the git hooks in hk.pkl"
+run = ["bun install --frozen-lockfile", "vale sync", "hk install --mise"]
 
 [tasks.dev]
 description = "Run the Worker locally at http://localhost:1337 (workerd, local KV, and Durable Objects)"

@@ -1,0 +1,16 @@
+amends "package://github.com/jdx/hk/releases/download/v2.7.0/hk@2.7.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    // Unstaged edits are stashed, so the check sees exactly what is being committed.
+    stash = "git"
+    steps {
+      ["check"] { check = "mise run check" }
+    }
+  }
+  ["pre-push"] {
+    steps {
+      ["e2e"] { check = "mise run test:e2e" }
+    }
+  }
+}
