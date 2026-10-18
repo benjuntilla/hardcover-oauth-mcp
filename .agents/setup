@@ -5,9 +5,10 @@ MISE_VERSION=2026.10.8
 mise_bin="$HOME/.local/bin/mise"
 if ! command -v mise >/dev/null 2>&1 && [ ! -x "$mise_bin" ]; then
   # Hashes from the release's SHASUMS256.txt, so a tampered download fails here instead of running.
+  # The Linux builds are the static musl ones, which run on glibc and musl hosts alike.
   case "$(uname -sm)" in
-    "Linux x86_64") platform=linux-x64 sha256=c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428 ;;
-    "Linux aarch64") platform=linux-arm64 sha256=6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5 ;;
+    "Linux x86_64") platform=linux-x64-musl sha256=043dc6b9077db988269ca2f85059851cb09fc080355350021363e95a5e227f84 ;;
+    "Linux aarch64") platform=linux-arm64-musl sha256=d9c5447ad5084b7bf9705ef2913dfad97268235f15849a51e88a21ede7e7204a ;;
     "Darwin arm64") platform=macos-arm64 sha256=dd77de9a7574e38d8409fb06fa85e1581415896639d075987791d8c4e5a57b73 ;;
     *) echo "No pinned mise build for $(uname -sm)" >&2; exit 1 ;;
   esac
