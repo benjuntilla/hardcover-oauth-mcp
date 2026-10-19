@@ -182,6 +182,9 @@ const authorizeAndForward = (request: Request, env: Env, ctx: ExecutionContext):
   Effect.gen(function* checkAndForward() {
     const props = yield* Effect.orDie(Schema.decodeUnknownEffect(Props)(ctx.props))
     const auth = yield* authOf(ctx)
+    // Read before any refusal: workerd closes a keep-alive connection whose request body went unread, without
+    // `Connection: close`, so the client's next request on it fails with ECONNRESET.
+    const body = request.method === "POST" ? Option.some(yield* Effect.promise(() => request.text())) : Option.none()
     if (!isAllowedUser(env.ALLOWED_HARDCOVER_USERS, { id: props.hcUserId, username: props.username })) {
       const description = `Hardcover user @${props.username} is not allowed on this server.`
       return json({ body: { error: "access_denied", error_description: description }, status: FORBIDDEN })
@@ -190,7 +193,6 @@ const authorizeAndForward = (request: Request, env: Env, ctx: ExecutionContext):
     if (Option.isSome(refusal)) {
       return refusal.value
     }
-    const body = request.method === "POST" ? Option.some(yield* Effect.promise(() => request.text())) : Option.none()
     return yield* pipe(
       body,
       Option.flatMap((text) => stepUp(text, auth)),

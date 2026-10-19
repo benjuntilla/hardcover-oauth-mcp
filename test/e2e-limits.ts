@@ -17,6 +17,7 @@ const FORBIDDEN = 403
 const FIRST_TRY = 1
 const MCP_ATTEMPTS = 130
 const RATE_LIMITED = 429
+const REFUSED_AGAIN = 5
 const REGISTER_ATTEMPTS = 12
 const RETRY_AFTER = "60"
 
@@ -64,6 +65,12 @@ const retryAfterOf = (last: HttpClientResponse.HttpClientResponse): Option.Optio
     Option.flatMapNullishOr((response) => response.headers["retry-after"]),
   )
 
+/**
+ * Repeats a refused request four more times at once. Each goes out on the connection the last 429 came back on, so a
+ * server that closes connections after a refusal fails one of them with ECONNRESET.
+ */
+const refusedAgain: Readonly<{ times: number }> = { times: REFUSED_AGAIN - FIRST_TRY }
+
 const discardBody = (response: HttpClientResponse.HttpClientResponse): Effect.Effect<void> =>
   limitedStatus(response) ? Effect.void : Effect.ignore(response.arrayBuffer)
 
@@ -72,6 +79,7 @@ const accountLimit = Effect.gen(function* limitAccount() {
   const request = mcp({ base: BASE, method: "tools/list", token: session.tokens.access_token })
   const last = yield* request.pipe(Effect.tap(discardBody), Effect.repeat(untilLimited(MCP_ATTEMPTS)))
   expect(Option.getOrUndefined(retryAfterOf(last))).toBe(RETRY_AFTER)
+  expect((yield* request.pipe(Effect.repeat(refusedAgain))).status).toBe(RATE_LIMITED)
 })
 
 const registrationLimit = Effect.gen(function* limitRegistration() {
@@ -79,6 +87,7 @@ const registrationLimit = Effect.gen(function* limitRegistration() {
   const request = post({ body, headers: { "content-type": "application/json" }, url: `${BASE}/register` })
   const last = yield* request.pipe(Effect.repeat(untilLimited(REGISTER_ATTEMPTS)))
   expect(Option.getOrUndefined(retryAfterOf(last))).toBe(RETRY_AFTER)
+  expect((yield* request.pipe(Effect.repeat(refusedAgain))).status).toBe(RATE_LIMITED)
 })
 
 /**
