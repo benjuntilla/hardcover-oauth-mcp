@@ -9,7 +9,9 @@ import { ME } from "#test/tools-fixtures.ts"
 import { makeFakeHardcover } from "#test/tools-fake.ts"
 import { makeMcpHandler } from "#src/mcp/server.ts"
 
-const MCP_URL = "http://localhost/mcp"
+/** A self-hosted deployment's address, so URLs that assume localhost or the hosted server fail the tests. */
+const MCP_ORIGIN = "https://mcp.example.test"
+const MCP_URL = `${MCP_ORIGIN}/mcp`
 const ACCEPT = "application/json, text/event-stream"
 const CONTENT_JSON = "application/json"
 
@@ -37,7 +39,7 @@ const toolHarness = (scopes: ReadonlySet<string>): Layer.Layer<ToolHarness> =>
       const fake = yield* makeFakeHardcover
       const session = { graphql: fake.graphql, hcUserId: ME, librarianRoles: ["librarian"], scopes, supporter: true, username: "reader" }
       const mcp = yield* Effect.acquireRelease(
-        Effect.sync(() => makeMcpHandler({ origin: new URL(MCP_URL).origin, session })),
+        Effect.sync(() => makeMcpHandler({ origin: MCP_ORIGIN, session })),
         (handler) => Effect.promise(() => handler.dispose()),
       )
       return { calls: fake.calls, clear: fake.clear, post: (request) => Effect.promise(() => mcp.handler(request)) }
@@ -79,5 +81,5 @@ const firstSent = (fragment: string): Effect.Effect<Option.Option<Readonly<Recor
 
 const clearCalls: Effect.Effect<void, never, ToolHarness> = ToolHarness.use((harness) => harness.clear)
 
-export { clearCalls, firstSent, post, sent, toolHarness }
+export { MCP_ORIGIN, clearCalls, firstSent, post, sent, toolHarness }
 export type { ToolHarness }

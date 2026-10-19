@@ -4,13 +4,12 @@
  * shows what the connection's scopes allow.
  */
 import { Array as Arr, Effect, ManagedRuntime, Option, Schema, String as Str, Struct, pipe } from "effect"
+import { MCP_ORIGIN, post, toolHarness } from "#test/tools-harness.ts"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { post, toolHarness } from "#test/tools-harness.ts"
 import type { ToolHarness } from "#test/tools-harness.ts"
 
 const SESSION_PROTOCOL = "2025-06-18"
 const ICONS_PROTOCOL = "2025-11-25"
-const MCP_ORIGIN = "http://localhost"
 const SITE_PUBLIC = new URL("../site/public", import.meta.url).pathname
 const ACCEPTED = 202
 const NOT_FOUND = 404
@@ -110,24 +109,18 @@ const servesIcons = Effect.gen(function* servesIcons() {
     headers: {},
   })
   const message = yield* messageText(init).pipe(Effect.flatMap(Schema.decodeEffect(IconsMessage)))
-  const icons = pipe(
-    message.result.serverInfo.icons,
-    Arr.map((icon) => new URL(icon.src)),
-  )
-  expect(icons).not.toEqual([])
   const served = yield* pipe(
-    icons,
-    Effect.forEach((url) =>
-      Effect.promise(() => Bun.file(`${SITE_PUBLIC}${url.pathname}`).exists()).pipe(
-        Effect.map((exists) => ({ exists, origin: url.origin })),
+    message.result.serverInfo.icons,
+    Effect.forEach((icon) =>
+      Effect.promise(() => Bun.file(`${SITE_PUBLIC}${new URL(icon.src).pathname}`).exists()).pipe(
+        Effect.map((exists) => ({ exists, src: icon.src })),
       ),
     ),
   )
-  const expected = pipe(
-    icons,
-    Arr.map(() => ({ exists: true, origin: MCP_ORIGIN })),
-  )
-  expect(served).toEqual(expected)
+  expect(served).toEqual([
+    { exists: true, src: `${MCP_ORIGIN}/icon-48.png` },
+    { exists: true, src: `${MCP_ORIGIN}/icon-512.png` },
+  ])
 })
 
 const sessionFlow = Effect.gen(function* sessionFlow() {
