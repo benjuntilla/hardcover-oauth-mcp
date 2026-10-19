@@ -38,6 +38,26 @@ const ipLimit = (env: Env, pathname: string): Option.Option<RateLimit> => {
 }
 
 /**
+ * Whether the request is within its endpoint's per-IP rate limit, counting it. Endpoints without a limit always are.
+ * @param {object} options The request.
+ * @param {Env} options.env The Worker bindings.
+ * @param {string} options.pathname The request path.
+ * @param {Request} options.request The request.
+ * @returns {Effect.Effect<boolean>} Whether it may proceed.
+ */
+const withinLimit = (options: { readonly env: Env; readonly pathname: string; readonly request: Request }): Effect.Effect<boolean> =>
+  Option.match(options.request.method === "OPTIONS" ? Option.none() : ipLimit(options.env, options.pathname), {
+    onNone: () => Effect.succeed(true),
+    onSome: (limiter) => {
+      const key = options.request.headers.get("cf-connecting-ip") ?? "unknown"
+      return Effect.map(
+        Effect.promise(() => limiter.limit({ key })),
+        (outcome) => outcome.success,
+      )
+    },
+  })
+
+/**
  * The response for a client that has made too many attempts.
  * @param {string} pathname The request path.
  * @returns {Response} The response.
@@ -95,17 +115,14 @@ const worker = {
     const url = new URL(request.url)
     return Effect.runPromise(
       Effect.gen(function* route() {
+        // The limit counts the request before its body arrives; the body is read even when refusing it.
+        const allowed = yield* withinLimit({ env, pathname: url.pathname, request })
         const bounded = yield* withBoundedBody(request)
+        if (!allowed) {
+          return tooManyRequests(url.pathname)
+        }
         if (Option.isNone(bounded)) {
           return payloadTooLarge()
-        }
-        const limiter = request.method === "OPTIONS" ? Option.none() : ipLimit(env, url.pathname)
-        if (Option.isSome(limiter)) {
-          const key = request.headers.get("cf-connecting-ip") ?? "unknown"
-          const { success } = yield* Effect.promise(() => limiter.value.limit({ key }))
-          if (!success) {
-            return tooManyRequests(url.pathname)
-          }
         }
         return yield* Effect.promise(() => providerFor({ env, url }).fetch(bounded.value, env, ctx))
       }),
