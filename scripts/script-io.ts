@@ -18,4 +18,16 @@ const writeText = (input: { readonly text: string; readonly url: URL }): Effect.
     try: () => Bun.write(input.url, input.text),
   })
 
-export { ScriptError, readText, writeText }
+const readBytes = (url: URL): Effect.Effect<Uint8Array, ScriptError> =>
+  Effect.tryPromise({
+    catch: (cause) => ScriptError.make({ cause, message: `Could not read ${url.pathname}` }),
+    try: () => Bun.file(url).bytes(),
+  })
+
+const writeBytes = (input: { readonly bytes: Uint8Array; readonly url: URL }): Effect.Effect<number, ScriptError> =>
+  Effect.tryPromise({
+    catch: (cause) => ScriptError.make({ cause, message: `Could not write ${input.url.pathname}` }),
+    try: () => Bun.write(input.url, input.bytes),
+  })
+
+export { ScriptError, readBytes, readText, writeBytes, writeText }

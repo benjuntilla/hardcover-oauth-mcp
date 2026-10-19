@@ -94,3 +94,7 @@ run = "bun test test/e2e.test.ts --timeout 60000"
 [tasks."docs:tools"]
 description = "Regenerate the README tool table from the toolkit"
 run = "bun scripts/tools-table.ts"
+
+[tasks.brand]
+description = "Redraw the site's icons and the repository's social preview (scripts/brand)"
+run = "bun scripts/brand.ts"
