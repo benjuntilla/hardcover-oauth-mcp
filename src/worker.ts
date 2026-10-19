@@ -9,7 +9,9 @@ import { html, messagePage } from "#src/oauth/pages.ts"
 import type { Env } from "#src/env.ts"
 import { json } from "#src/mcp/jsonrpc.ts"
 import { providerFor } from "#src/oauth/provider.ts"
+import { withBoundedBody } from "#src/request-body.ts"
 
+const PAYLOAD_TOO_LARGE = 413
 const TOO_MANY = 429
 const RETRY_AFTER = "60"
 const PURGE_BATCHES = 20
@@ -36,6 +38,26 @@ const ipLimit = (env: Env, pathname: string): Option.Option<RateLimit> => {
 }
 
 /**
+ * Whether the request is within its endpoint's per-IP rate limit, counting it. Endpoints without a limit always are.
+ * @param {object} options The request.
+ * @param {Env} options.env The Worker bindings.
+ * @param {string} options.pathname The request path.
+ * @param {Request} options.request The request.
+ * @returns {Effect.Effect<boolean>} Whether it may proceed.
+ */
+const withinLimit = (options: { readonly env: Env; readonly pathname: string; readonly request: Request }): Effect.Effect<boolean> =>
+  Option.match(options.request.method === "OPTIONS" ? Option.none() : ipLimit(options.env, options.pathname), {
+    onNone: () => Effect.succeed(true),
+    onSome: (limiter) => {
+      const key = options.request.headers.get("cf-connecting-ip") ?? "unknown"
+      return Effect.map(
+        Effect.promise(() => limiter.limit({ key })),
+        (outcome) => outcome.success,
+      )
+    },
+  })
+
+/**
  * The response for a client that has made too many attempts.
  * @param {string} pathname The request path.
  * @returns {Response} The response.
@@ -54,6 +76,12 @@ const tooManyRequests = (pathname: string): Response => {
     status: TOO_MANY,
   })
 }
+
+const payloadTooLarge = (): Response =>
+  json({
+    body: { error: "invalid_request", error_description: "The request body is larger than 1 MiB." },
+    status: PAYLOAD_TOO_LARGE,
+  })
 
 /**
  * Drops expired grants and tokens from KV, a batch at a time.
@@ -77,7 +105,7 @@ const purgeExpired = (env: Env): Effect.Effect<void> => {
 
 const worker = {
   /**
-   * Routes one request through the rate limit and the OAuth provider.
+   * Routes one request through the body cap, the rate limit, and the OAuth provider.
    * @param {Request} request The request.
    * @param {Env} env The Worker bindings.
    * @param {ExecutionContext} ctx The request context.
@@ -87,17 +115,16 @@ const worker = {
     const url = new URL(request.url)
     return Effect.runPromise(
       Effect.gen(function* route() {
-        const limiter = request.method === "OPTIONS" ? Option.none() : ipLimit(env, url.pathname)
-        if (Option.isSome(limiter)) {
-          const key = request.headers.get("cf-connecting-ip") ?? "unknown"
-          const { success } = yield* Effect.promise(() => limiter.value.limit({ key }))
-          if (!success) {
-            // Drained so the connection stays reusable; see the same read in src/mcp/api-handler.ts.
-            yield* Effect.promise(() => request.arrayBuffer())
-            return tooManyRequests(url.pathname)
-          }
+        // The limit counts the request before its body arrives; the body is read even when refusing it.
+        const allowed = yield* withinLimit({ env, pathname: url.pathname, request })
+        const bounded = yield* withBoundedBody(request)
+        if (!allowed) {
+          return tooManyRequests(url.pathname)
         }
-        return yield* Effect.promise(() => providerFor({ env, url }).fetch(request, env, ctx))
+        if (Option.isNone(bounded)) {
+          return payloadTooLarge()
+        }
+        return yield* Effect.promise(() => providerFor({ env, url }).fetch(bounded.value, env, ctx))
       }),
     )
   },
