@@ -7,6 +7,8 @@
 import { Array as Arr, Option, String as Str, pipe } from "effect"
 
 const SITE_NAME = "Hardcover MCP"
+const SITE_DESCRIPTION =
+  "Manage your Hardcover library, reading progress, reviews, lists, and goals from Claude, ChatGPT, and more. Sign in with Hardcover, no API key needed."
 const HOME = "/"
 const LEADING_SLASH = /^\//v
 
@@ -57,7 +59,7 @@ const pageSlug = (page: SitePage): string | undefined =>
  * Application module, not a public API.
  * @internal
  */
-export { NAV, PAGES, pageSlug, pageTitle }
+export { NAV, PAGES, SITE_DESCRIPTION, pageSlug, pageTitle }
 /**
  * Application module, not a public API.
  * @internal

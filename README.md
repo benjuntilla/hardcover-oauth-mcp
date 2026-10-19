@@ -2,13 +2,11 @@
 
 # hardcover-oauth-mcp
 
-A remote [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [Hardcover](https://hardcover.app), the book tracking site. It lets Claude and other MCP clients read and manage your library, reading progress, reviews, journal, lists, goals, and more.
+Manage your [Hardcover](https://hardcover.app) library, reading progress, reviews, lists, and goals from Claude, ChatGPT, and other AI assistants with this remote [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server. Connect to the public instance at `https://hardcover.benjuntilla.com/mcp` ([quick start](#quick-start)) or [deploy your own](#deploy-your-own).
 
 - **Works in web and mobile clients.** The public instance is a hosted remote server, so Claude on the web and on phones, ChatGPT, and other remote clients can connect to it. Other Hardcover MCP servers run on your own computer, where only desktop clients can reach them.
 - **Sign in with Hardcover (OAuth).** No pasting unsafe API keys. Each person connects their own account through Hardcover's OAuth and picks which permissions to grant.
 - **53 read/write tools.** 47 custom task-oriented tools cover the library, progress, reviews, journal, lists, goals, follows, notifications, and vibes. Six raw GraphQL and schema-discovery tools reach anything else in the Hardcover API.
-
-Connect to the public instance at `https://hardcover.benjuntilla.com/mcp` ([quick start](#quick-start)) or [deploy your own](#deploy-your-own).
 
 ## Example workflows
 
