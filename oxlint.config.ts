@@ -103,6 +103,11 @@ export default defineConfig({
       files: ["src/worker.ts", "alchemy.run.ts", "test/e2e.run.ts", "*.config.ts"],
       rules: { "import/no-default-export": "off" },
     },
+    {
+      // An entry point that provides its platform layer to the main effect, which the rule allows.
+      files: ["scripts/brand.ts"],
+      rules: { "effecttsgo/strict-effect-provide": "off" },
+    },
   ],
   plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node", "jsdoc", "jest", "effecttsgo"],
   rules: {

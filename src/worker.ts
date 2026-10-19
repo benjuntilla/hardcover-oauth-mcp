@@ -1,5 +1,5 @@
 /**
- * Worker entry point. Static assets (`/`, `/privacy`, `/site.css`) are served
+ * Worker entry point. Static assets (`/`, `/privacy`, `/site.css`, the icons) are served
  * before this runs. `OAuthProvider` routes discovery, token, and registration
  * endpoints itself, `/mcp` to the MCP handler (with a validated token), and
  * `/authorize` and `/callback` to the default handler.

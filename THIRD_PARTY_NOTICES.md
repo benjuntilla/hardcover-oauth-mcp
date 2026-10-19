@@ -25,3 +25,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+The dimension labels in `site/public/icon-512.png`, `site/public/apple-touch-icon.png`, and `.github/social-preview.png` are drawn with the strokes of Hershey Sans 1-stroke, from the [hersheytext](https://github.com/techninja/hersheytextjs) package. The Hershey Fonts' license asks for these acknowledgements:
+
+```text
+- The Hershey Fonts were originally created by Dr.
+    A. V. Hershey while working at the U. S.
+    National Bureau of Standards.
+- The format of the Font data in this distribution
+    was originally created by
+        James Hurt
+        Cognition, Inc.
+        900 Technology Park Drive
+        Billerica, MA 01821
+        (mit-eddie!ci-dandelion!hurt)
+```
