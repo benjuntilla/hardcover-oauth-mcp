@@ -3,6 +3,7 @@
  * endpoint, scope handling, the user allowlist, and the README tool table.
  */
 import { Array as Arr, Effect, Exit, Option, Schema, pipe } from "effect"
+import { MAX_BODY_BYTES, withBoundedBody } from "#src/request-body.ts"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { inspect, missingScopes } from "#src/hardcover/guard.ts"
 import { installScriptedFetch, run } from "#test/unit-executor.ts"
@@ -24,6 +25,11 @@ const RETRY_AFTER_SECONDS = 7
 /** One more than the guard allows. */
 const TOO_MANY_FIELDS = 11
 const FIRST_ID = 1
+const CHUNK_BYTES = 65_536
+const ONE_BYTE = 1
+const CHUNK_DELAY = "1 millis"
+const LETTER_A = 97
+const ENDPOINT = "https://hardcover.test/mcp"
 
 const README = new URL("../README.md", import.meta.url)
 const TOOLS_TABLE = /<!-- tools:start[^>]*-->\n(?<table>[\s\S]*?)\n<!-- tools:end -->/v
@@ -192,6 +198,77 @@ describe("scopes and access", () => {
     expect(isAllowedUser("*", user)).toBe(true)
     expect(isAllowedUser("readers", user)).toBe(false)
   })
+})
+
+/**
+ * A POST whose body is `size` bytes in 64 KiB chunks, streamed without a Content-Length.
+ * @param {number} size The body's size.
+ * @returns {Request} The request.
+ */
+const streamedPost = (size: number): Request => {
+  const chunks = Arr.makeBy(Math.ceil(size / CHUNK_BYTES), (index) =>
+    new Uint8Array(Math.min(CHUNK_BYTES, size - index * CHUNK_BYTES)).fill(LETTER_A),
+  )
+  const body = new ReadableStream<Uint8Array>({
+    start: (controller): void => {
+      for (const chunk of chunks) {
+        controller.enqueue(chunk)
+      }
+      controller.close()
+    },
+  })
+  return new Request(ENDPOINT, { body, duplex: "half", headers: { authorization: "Bearer token" }, method: "POST" })
+}
+
+/**
+ * A POST whose body never ends, streamed 64 KiB at a time. Each chunk waits on a timer, so a reader that doesn't stop
+ * runs into the test's timeout instead of starving it.
+ * @returns {Request} The request.
+ */
+const endlessPost = (): Request => {
+  const body = new ReadableStream<Uint8Array>({
+    pull: (controller): Promise<void> =>
+      Effect.runPromise(
+        Effect.sync(() => {
+          controller.enqueue(new Uint8Array(CHUNK_BYTES))
+        }).pipe(Effect.delay(CHUNK_DELAY)),
+      ),
+  })
+  return new Request(ENDPOINT, { body, duplex: "half", method: "POST" })
+}
+
+const atCap = Effect.gen(function* atCap() {
+  const bounded = yield* withBoundedBody(streamedPost(MAX_BODY_BYTES))
+  expect(Option.isSome(bounded)).toBe(true)
+  if (Option.isSome(bounded)) {
+    expect(bounded.value.method).toBe("POST")
+    expect(bounded.value.headers.get("authorization")).toBe("Bearer token")
+    const text = yield* Effect.promise(() => bounded.value.text())
+    expect(text).toBe("a".repeat(MAX_BODY_BYTES))
+  }
+})
+
+const overCap = Effect.gen(function* overCap() {
+  const bounded = yield* withBoundedBody(streamedPost(MAX_BODY_BYTES + ONE_BYTE))
+  expect(Option.isNone(bounded)).toBe(true)
+})
+
+const endless = Effect.gen(function* endless() {
+  const bounded = yield* withBoundedBody(endlessPost())
+  expect(Option.isNone(bounded)).toBe(true)
+})
+
+const bodiless = Effect.gen(function* bodiless() {
+  const request = new Request(ENDPOINT)
+  const bounded = yield* withBoundedBody(request)
+  expect(Option.getOrUndefined(bounded)).toBe(request)
+})
+
+describe("request body cap", () => {
+  test("passes a body of exactly the cap through whole, with its method and headers", () => Effect.runPromise(atCap))
+  test("refuses a body one byte over the cap", () => Effect.runPromise(overCap))
+  test("stops reading a body that never ends", () => Effect.runPromise(endless))
+  test("leaves a request without a body as it is", () => Effect.runPromise(bodiless))
 })
 
 describe("docs", () => {

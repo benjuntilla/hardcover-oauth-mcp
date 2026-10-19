@@ -9,7 +9,9 @@ import { html, messagePage } from "#src/oauth/pages.ts"
 import type { Env } from "#src/env.ts"
 import { json } from "#src/mcp/jsonrpc.ts"
 import { providerFor } from "#src/oauth/provider.ts"
+import { withBoundedBody } from "#src/request-body.ts"
 
+const PAYLOAD_TOO_LARGE = 413
 const TOO_MANY = 429
 const RETRY_AFTER = "60"
 const PURGE_BATCHES = 20
@@ -55,6 +57,12 @@ const tooManyRequests = (pathname: string): Response => {
   })
 }
 
+const payloadTooLarge = (): Response =>
+  json({
+    body: { error: "invalid_request", error_description: "The request body is larger than 1 MiB." },
+    status: PAYLOAD_TOO_LARGE,
+  })
+
 /**
  * Drops expired grants and tokens from KV, a batch at a time.
  * @param {Env} env The Worker bindings.
@@ -77,7 +85,7 @@ const purgeExpired = (env: Env): Effect.Effect<void> => {
 
 const worker = {
   /**
-   * Routes one request through the rate limit and the OAuth provider.
+   * Routes one request through the body cap, the rate limit, and the OAuth provider.
    * @param {Request} request The request.
    * @param {Env} env The Worker bindings.
    * @param {ExecutionContext} ctx The request context.
@@ -87,17 +95,19 @@ const worker = {
     const url = new URL(request.url)
     return Effect.runPromise(
       Effect.gen(function* route() {
+        const bounded = yield* withBoundedBody(request)
+        if (Option.isNone(bounded)) {
+          return payloadTooLarge()
+        }
         const limiter = request.method === "OPTIONS" ? Option.none() : ipLimit(env, url.pathname)
         if (Option.isSome(limiter)) {
           const key = request.headers.get("cf-connecting-ip") ?? "unknown"
           const { success } = yield* Effect.promise(() => limiter.value.limit({ key }))
           if (!success) {
-            // Drained so the connection stays reusable; see the same read in src/mcp/api-handler.ts.
-            yield* Effect.promise(() => request.arrayBuffer())
             return tooManyRequests(url.pathname)
           }
         }
-        return yield* Effect.promise(() => providerFor({ env, url }).fetch(request, env, ctx))
+        return yield* Effect.promise(() => providerFor({ env, url }).fetch(bounded.value, env, ctx))
       }),
     )
   },
