@@ -8,7 +8,7 @@ import { Array as Arr, Option, String as Str, pipe } from "effect"
 
 const SITE_NAME = "Hardcover MCP"
 const SITE_DESCRIPTION =
-  "Remote MCP server for Hardcover. Lets Claude, ChatGPT, and other AI assistants manage your books, reading progress, reviews, and lists. Uses OAuth sign-in and runs on Cloudflare Workers, hosted or self-hosted."
+  "Manage your Hardcover library, reading progress, reviews, lists, and goals from Claude, ChatGPT, and more. Sign in with Hardcover, no API key needed."
 const HOME = "/"
 const LEADING_SLASH = /^\//v
 
