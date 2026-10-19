@@ -92,6 +92,8 @@ const worker = {
           const key = request.headers.get("cf-connecting-ip") ?? "unknown"
           const { success } = yield* Effect.promise(() => limiter.value.limit({ key }))
           if (!success) {
+            // Drained so the connection stays reusable; see the same read in src/mcp/api-handler.ts.
+            yield* Effect.promise(() => request.arrayBuffer())
             return tooManyRequests(url.pathname)
           }
         }

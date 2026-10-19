@@ -55,9 +55,11 @@ const devLayer = Layer.effectDiscard(
     yield* Mock
     yield* Effect.acquireRelease(
       Effect.sync(() => spawn(DEV_COMMAND, { stderr: "inherit", stdout: "ignore" })),
+      // Waits for the exit, which frees port 1337; otherwise the next run's readiness check can reach this server.
       (dev) =>
-        Effect.sync(() => {
+        Effect.promise(() => {
           dev.kill()
+          return dev.exited
         }),
     )
   }),
