@@ -1,0 +1,31 @@
+// Dependency updates, run by the Mend Renovate app (https://github.com/apps/renovate).
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  schedule: ["before 6am on monday"],
+  // Skips releases younger than a week, so a compromised publish is usually caught before it lands here.
+  // Vulnerability fixes skip this wait and the schedule.
+  minimumReleaseAge: "7 days",
+  vulnerabilityAlerts: {
+    groupName: "security updates",
+  },
+  packageRules: [
+    { matchManagers: ["bun"], matchUpdateTypes: ["minor", "patch"], groupName: "bun" },
+    { matchManagers: ["github-actions"], matchUpdateTypes: ["minor", "patch"], groupName: "GitHub Actions" },
+    { matchManagers: ["mise"], matchUpdateTypes: ["minor", "patch"], groupName: "mise tools" },
+    // hk's version is in mise.toml and in hk.pkl's config URL; one PR bumps both.
+    { matchDepNames: ["hk"], groupName: "hk" },
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^hk\\.pkl$/"],
+      matchStrings: ["package://github\\.com/jdx/hk/releases/download/v(?<currentValue>[^/]+)/hk@[^#]+#"],
+      autoReplaceStringTemplate: "package://github.com/jdx/hk/releases/download/v{{{newValue}}}/hk@{{{newValue}}}#",
+      depNameTemplate: "hk",
+      packageNameTemplate: "jdx/hk",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+  ],
+}
