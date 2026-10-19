@@ -106,6 +106,9 @@ export default defineConfig({
   ],
   plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node", "jsdoc", "jest", "effecttsgo"],
   rules: {
+    // Effect's unstable modules (platform services, AI, HTTP) are used on purpose.
+    // The effect version is pinned exactly, so their breaking changes arrive only with an upgrade that `mise run check` covers.
+    "effecttsgo/unstable-api-usage": "off",
     "eslint/new-cap": ["error", { capIsNew: false }],
     "eslint/no-duplicate-imports": ["error", { allowSeparateTypeImports: true }],
     "eslint/no-ternary": "off",

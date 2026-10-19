@@ -20,7 +20,6 @@
       {
         "name": "@effect/language-service",
         "diagnostics": false,
-        "allowedUnstableApis": ["effect/ai", "effect/http", "effect/ErrorReporter", "effect/Crypto", "effect/graphql"],
         "allowedExperimentalApis": ["effect/graphql"]
       }
     ]
