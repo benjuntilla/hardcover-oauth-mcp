@@ -1,8 +1,6 @@
-/** PNG rendering with resvg, ICO files built from PNGs, and the fonts resvg needs for text. */
-import { Array as Arr, Effect, String as Str, pipe } from "effect"
-import { ScriptError, readBytes, writeBytes } from "#root/scripts/script-io.ts"
+/** PNG rendering with resvg, and ICO files built from PNGs. */
+import { Array as Arr, pipe } from "effect"
 import { Resvg } from "@resvg/resvg-js"
-import { decompress } from "woff2-encoder"
 
 interface IcoImage {
   readonly png: Uint8Array
@@ -16,7 +14,6 @@ const ICON_TYPE = 1
 const PLANES = 1
 const BITS_PER_PIXEL = 32
 const LITTLE_ENDIAN = true
-const WOFF2_EXTENSION = /\.woff2$/v
 
 /**
  * An SVG rendered to PNG.
@@ -71,28 +68,4 @@ const ico = (images: ReadonlyArray<IcoImage>): Uint8Array => {
   return new Uint8Array(Bun.concatArrayBuffers([header(images.length), ...entries, ...pngs]))
 }
 
-/** Decoded fonts go in node_modules' cache, since they derive from installed packages. */
-const FONT_CACHE = new URL("../../node_modules/.cache/brand-fonts/", import.meta.url)
-
-const decodeFont = (specifier: string): Effect.Effect<string, ScriptError> =>
-  Effect.gen(function* decode() {
-    const woff2 = yield* readBytes(new URL(import.meta.resolve(specifier)))
-    const sfnt = yield* Effect.tryPromise({
-      catch: (cause) => ScriptError.make({ cause, message: `Could not decode ${specifier}` }),
-      try: () => decompress(woff2),
-    })
-    const name = pipe(specifier, Str.split("/"), Arr.lastNonEmpty, Str.replace(WOFF2_EXTENSION, ".ttf"))
-    const file = new URL(name, FONT_CACHE)
-    yield* writeBytes({ bytes: sfnt, url: file })
-    return file.pathname
-  })
-
-/**
- * WOFF2 fonts from npm packages, decoded to TrueType, since resvg reads only TrueType and OpenType files.
- * @param {ReadonlyArray<string>} specifiers The fonts, as paths within their packages.
- * @returns {Effect.Effect<ReadonlyArray<string>, ScriptError>} The decoded files' paths.
- */
-const decodeFonts = (specifiers: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, ScriptError> =>
-  pipe(specifiers, Effect.forEach(decodeFont))
-
-export { decodeFonts, ico, png }
+export { ico, png }
