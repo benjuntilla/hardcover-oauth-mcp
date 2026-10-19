@@ -219,7 +219,7 @@ This builds the site, creates the Cloudflare resources, and prints the URL. Run 
 
 Deploys keep Alchemy's state in your Cloudflare account, so any machine signed in with Alchemy can redeploy or destroy. The first deploy sets up the state store there. `mise run dev` and the tests keep theirs in `.alchemy/`.
 
-To deploy `prod` on every push to `main`, the Deploy workflow runs `mise run check`, then `mise run test:e2e`, then the deploy. In the repository's settings, create a `production` environment limited to `main`. Give it a `CLOUDFLARE_ACCOUNT_ID` variable and `CLOUDFLARE_API_TOKEN`, `HARDCOVER_CLIENT_ID`, and `HARDCOVER_CLIENT_SECRET` secrets. Create the token under Manage Account → API Tokens. On the account, give it Workers Scripts, Workers KV Storage, and Secrets Store edit, plus Account Settings read. On your domain's zone, give it Zone read, Workers Routes edit, and SSL and Certificates edit.
+Pushes to `main` deploy `prod` once `mise run check` and `mise run test:e2e` pass. This needs a `main`-only `production` environment with a `CLOUDFLARE_ACCOUNT_ID` variable and `CLOUDFLARE_API_TOKEN`, `HARDCOVER_CLIENT_ID`, and `HARDCOVER_CLIENT_SECRET` secrets. The token needs Account Settings and Zone read, plus Workers Scripts, Workers KV Storage, Secrets Store, Workers Routes, and SSL and Certificates edit.
 
 - **Plan:** use Workers Paid. A connection's Durable Object builds its MCP server when it wakes. That takes about 100 ms of CPU, ten times the Free plan's per-request limit. After that, a call takes about 5 ms.
 - **The server's own rate limits:** 10 registrations, 30 sign-in steps, and 60 token requests a minute per client IP. Each Hardcover account gets 120 MCP requests a minute.
