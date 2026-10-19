@@ -18,6 +18,8 @@ Manage your [Hardcover](https://hardcover.app) library, reading progress, review
 1. "I'm on page 212 of _Piranesi_." _The book moves to Currently Reading and the page goes on its reading session._
 2. "Finished it today, 4.5 stars." _The book moves to Read, finished today, with a 4.5-star rating._
 
+![Claude, asked "I'm on page 212 of Piranesi by Susanna Clarke," checks Currently Reading, searches Hardcover, and updates the reading progress](site/screenshots/claude-update-progress.png)
+
 ### Plan what's next
 
 1. "Add _Kindred_ and _The Dispossessed_ to my want-to-read."
@@ -60,7 +62,13 @@ https://hardcover.benjuntilla.com/mcp
 - **Cursor and others:** add a remote (Streamable HTTP) server with that URL. The client discovers OAuth by itself.
 - **MCP Inspector:** `bunx @modelcontextprotocol/inspector`, choose Streamable HTTP, and enter the URL.
 
-Your client opens a consent page where you pick permissions, then Hardcover asks you to sign in. Revoke access any time from Hardcover's Authorized apps page. See the [privacy notice](PRIVACY.md) and [terms](TERMS.md), or [deploy your own](#deploy-your-own).
+Your client opens a consent page where you pick permissions, then Hardcover asks you to sign in.
+
+![The consent page, where you choose which Hardcover permissions the client gets](site/screenshots/consent.png)
+
+Revoke access any time from Hardcover's Authorized apps page. See the [privacy notice](PRIVACY.md) and [terms](TERMS.md), or [deploy your own](#deploy-your-own).
+
+![Hardcover's Authorized apps page, listing Hardcover OAuth MCP with its scopes and sessions and a button to revoke access](site/screenshots/authorized-apps.png)
 
 ## Report an issue
 

@@ -156,6 +156,15 @@ td:nth-child(2) {
   min-width: 13rem;
 }
 
+/* Screenshots fill the prose column; the rule keeps their light backgrounds from blending into the page. */
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
 details {
   margin-block: 1em;
 }
