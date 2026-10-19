@@ -44,7 +44,7 @@
     "woff2-encoder": "2.0.0"
   },
   "overrides": {
-    "@hono/node-server": "1.19.17",
+    "@hono/node-server": "2.1.4",
     "hono": "4.13.13",
     "lodash": "4.18.1",
     "valibot": "1.5.0"
