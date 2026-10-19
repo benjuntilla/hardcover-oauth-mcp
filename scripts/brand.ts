@@ -2,11 +2,11 @@
  * Draws the site's icons and the repository's social preview from the book model in scripts/brand:
  *   mise run brand
  */
-import { Array as Arr, Effect, FileSystem, Layer, Path, pipe } from "effect"
+import { Array as Arr, Effect, FileSystem, Path, pipe } from "effect"
 import type { BadArgument, PlatformError } from "effect/PlatformError"
+import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { FONT_FILES, SOCIAL_WIDTH, socialPreview } from "#root/scripts/brand/social.ts"
 import { ico, png } from "#root/scripts/brand/raster.ts"
-import { BunServices } from "@effect/platform-bun"
 import type { Lettering } from "#root/scripts/brand/lettering.ts"
 import type { Scope } from "effect"
 import { ScriptError } from "#root/scripts/script-io.ts"
@@ -92,8 +92,6 @@ const draw = Effect.gen(function* draw() {
   )
 })
 
-const MainLayer = Layer.effectDiscard(Effect.scoped(draw)).pipe(Layer.provide(BunServices.layer))
-
 if (import.meta.main) {
-  Effect.runFork(Layer.launch(MainLayer))
+  BunRuntime.runMain(Effect.scoped(draw).pipe(Effect.provide(BunServices.layer)))
 }
