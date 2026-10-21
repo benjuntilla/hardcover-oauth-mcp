@@ -1,0 +1,5 @@
+paths:
+  .github/workflows/publish-registry.yml:
+    ignore:
+      # GitHub added concurrency.queue in May 2026; actionlint 1.7.12, the latest release, doesn't know it yet.
+      - 'unexpected key "queue" for "concurrency" section'

@@ -7,10 +7,11 @@ on:
 
 permissions: {}
 
-# Publishes one version at a time, in tag order.
+# Publishes one version at a time; queue: max keeps every pending tag instead of replacing all but the newest.
 concurrency:
   group: publish-registry
   cancel-in-progress: false
+  queue: max
 
 jobs:
   publish:

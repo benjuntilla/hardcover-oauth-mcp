@@ -110,15 +110,29 @@ const RegistryEntryJson = Schema.fromJsonString(RegistryEntry)
 const readRegistryEntry = Effect.promise(() => Bun.file(REGISTRY_ENTRY).text())
 const registryEntry = readRegistryEntry.pipe(Effect.flatMap(Schema.decodeEffect(RegistryEntryJson)))
 
+/** Where the public instance serves the server; server.json must point there. */
+const PRODUCTION_ORIGIN = "https://hardcover.benjuntilla.com"
+
 /**
- * The paths of some URLs, so entries pointing at another origin still compare.
+ * The URLs of some icons or remotes.
  * @param {ReadonlyArray} items Things with a `src` or `url`.
- * @returns {ReadonlyArray<string>} Their paths.
+ * @returns {ReadonlyArray<string>} Their URLs.
  */
-const urlPaths = (items: ReadonlyArray<Readonly<{ src: string } | { url: string }>>): ReadonlyArray<string> =>
+const urlsOf = (items: ReadonlyArray<Readonly<{ src: string } | { url: string }>>): ReadonlyArray<string> =>
   pipe(
     items,
-    Arr.map((item) => new URL("src" in item ? item.src : item.url).pathname),
+    Arr.map((item) => ("src" in item ? item.src : item.url)),
+  )
+
+/**
+ * The same paths on the production origin, so the test server's icons can be compared with server.json.
+ * @param {ReadonlyArray<string>} urls URLs on any origin.
+ * @returns {ReadonlyArray<string>} Them on the production origin.
+ */
+const onProduction = (urls: ReadonlyArray<string>): ReadonlyArray<string> =>
+  pipe(
+    urls,
+    Arr.map((url) => `${PRODUCTION_ORIGIN}${new URL(url).pathname}`),
   )
 
 const servesIcons = Effect.gen(function* servesIcons() {
@@ -146,13 +160,13 @@ const servesIcons = Effect.gen(function* servesIcons() {
   ])
   const entry = yield* registryEntry
   expect({
-    icons: urlPaths(entry.icons),
-    mcpPath: urlPaths(entry.remotes),
+    icons: urlsOf(entry.icons),
+    remotes: urlsOf(entry.remotes),
     version: entry.version,
     websiteUrl: entry.websiteUrl,
   }).toEqual({
-    icons: urlPaths(message.result.serverInfo.icons),
-    mcpPath: ["/mcp"],
+    icons: onProduction(urlsOf(message.result.serverInfo.icons)),
+    remotes: [`${PRODUCTION_ORIGIN}/mcp`],
     version: message.result.serverInfo.version,
     websiteUrl: message.result.serverInfo.websiteUrl,
   })
