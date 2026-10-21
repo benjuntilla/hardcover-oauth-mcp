@@ -11,6 +11,7 @@ import { McpProtocol, McpSchema, McpServer, Toolkit } from "effect/ai"
 import { Session } from "#src/mcp/session.ts"
 import type { ToolPolicy } from "#src/mcp/define.ts"
 import { toolPolicy } from "#src/mcp/define.ts"
+import { version } from "#root/package.json"
 
 const INSTRUCTIONS = [
   "Tools for the user's Hardcover.app account: their library, reading progress, reviews, journal, lists, goals,",
@@ -25,8 +26,8 @@ const SERVER_INFO = {
   instructions: pipe(INSTRUCTIONS, Arr.join(" ")),
   name: "hardcover",
   title: "Hardcover",
-  version: "0.1.0",
-  websiteUrl: "https://github.com/benjuntilla/hardcover-oauth-mcp",
+  version,
+  websiteUrl: "https://hardcover.benjuntilla.com",
 } as const
 
 /**

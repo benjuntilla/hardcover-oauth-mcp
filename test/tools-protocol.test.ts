@@ -11,6 +11,7 @@ import type { ToolHarness } from "#test/tools-harness.ts"
 const SESSION_PROTOCOL = "2025-06-18"
 const ICONS_PROTOCOL = "2025-11-25"
 const SITE_PUBLIC = new URL("../site/public", import.meta.url).pathname
+const REGISTRY_ENTRY = new URL("../server.json", import.meta.url).pathname
 const ACCEPTED = 202
 const NOT_FOUND = 404
 const DATA_PREFIX = "data:"
@@ -24,7 +25,14 @@ const ToolList = Schema.Struct({ tools: Schema.Array(Schema.Struct({ name: Schem
 const ToolCalled = Schema.Struct({ isError: Schema.Boolean })
 const InitializeMessage = Schema.fromJsonString(Schema.Struct({ result: Initialized }))
 const Icon = Schema.Struct({ src: Schema.String })
-const ServerInfo = Schema.Struct({ icons: Schema.Array(Icon) })
+const ServerInfo = Schema.Struct({ icons: Schema.Array(Icon), version: Schema.String, websiteUrl: Schema.String })
+/** The parts of the MCP Registry entry that must agree with what the server reports. */
+const RegistryEntry = Schema.Struct({
+  icons: Schema.Array(Icon),
+  remotes: Schema.Array(Schema.Struct({ url: Schema.String })),
+  version: Schema.String,
+  websiteUrl: Schema.String,
+})
 const IconsMessage = Schema.fromJsonString(Schema.Struct({ result: Schema.Struct({ serverInfo: ServerInfo }) }))
 const ToolListMessage = Schema.fromJsonString(Schema.Struct({ result: ToolList }))
 const ToolCallMessage = Schema.fromJsonString(Schema.Struct({ result: ToolCalled }))
@@ -98,6 +106,35 @@ const callsInSession = (inSession: SessionHeaders): Effect.Effect<void, Schema.S
     expect(unknown.status).toBe(NOT_FOUND)
   })
 
+const RegistryEntryJson = Schema.fromJsonString(RegistryEntry)
+const readRegistryEntry = Effect.promise(() => Bun.file(REGISTRY_ENTRY).text())
+const registryEntry = readRegistryEntry.pipe(Effect.flatMap(Schema.decodeEffect(RegistryEntryJson)))
+
+/** Where the public instance serves the server; server.json must point there. */
+const PRODUCTION_ORIGIN = "https://hardcover.benjuntilla.com"
+
+/**
+ * The URLs of some icons or remotes.
+ * @param {ReadonlyArray} items Things with a `src` or `url`.
+ * @returns {ReadonlyArray<string>} Their URLs.
+ */
+const urlsOf = (items: ReadonlyArray<Readonly<{ src: string } | { url: string }>>): ReadonlyArray<string> =>
+  pipe(
+    items,
+    Arr.map((item) => ("src" in item ? item.src : item.url)),
+  )
+
+/**
+ * The same paths on the production origin, so the test server's icons can be compared with server.json.
+ * @param {ReadonlyArray<string>} urls URLs on any origin.
+ * @returns {ReadonlyArray<string>} Them on the production origin.
+ */
+const onProduction = (urls: ReadonlyArray<string>): ReadonlyArray<string> =>
+  pipe(
+    urls,
+    Arr.map((url) => `${PRODUCTION_ORIGIN}${new URL(url).pathname}`),
+  )
+
 const servesIcons = Effect.gen(function* servesIcons() {
   const init = yield* post({
     body: {
@@ -121,6 +158,18 @@ const servesIcons = Effect.gen(function* servesIcons() {
     { exists: true, src: `${MCP_ORIGIN}/icon-48.png` },
     { exists: true, src: `${MCP_ORIGIN}/icon-512.png` },
   ])
+  const entry = yield* registryEntry
+  expect({
+    icons: urlsOf(entry.icons),
+    remotes: urlsOf(entry.remotes),
+    version: entry.version,
+    websiteUrl: entry.websiteUrl,
+  }).toEqual({
+    icons: onProduction(urlsOf(message.result.serverInfo.icons)),
+    remotes: [`${PRODUCTION_ORIGIN}/mcp`],
+    version: message.result.serverInfo.version,
+    websiteUrl: message.result.serverInfo.websiteUrl,
+  })
 })
 
 const sessionFlow = Effect.gen(function* sessionFlow() {
@@ -136,5 +185,6 @@ describe("protocol", () => {
 
   test("2025-06-18 clients get a session, and only the tools their scopes allow", () => runtime.runPromise(sessionFlow))
 
-  test("2025-11-25 clients get icons that the site serves from the server's own origin", () => runtime.runPromise(servesIcons))
+  test("2025-11-25 clients get icons that the site serves from the server's own origin, matching server.json", () =>
+    runtime.runPromise(servesIcons))
 })

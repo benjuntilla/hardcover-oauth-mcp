@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.benjuntilla/hardcover-oauth-mcp",
+  "title": "Hardcover OAuth MCP",
+  "description": "Read and update your Hardcover library, progress, lists, and goals. Sign in with Hardcover OAuth.",
+  "version": "0.1.0",
+  "websiteUrl": "https://hardcover.benjuntilla.com",
+  "repository": { "url": "https://github.com/benjuntilla/hardcover-oauth-mcp", "source": "github" },
+  "icons": [
+    { "src": "https://hardcover.benjuntilla.com/icon-48.png", "mimeType": "image/png", "sizes": ["48x48"] },
+    { "src": "https://hardcover.benjuntilla.com/icon-512.png", "mimeType": "image/png", "sizes": ["512x512"] }
+  ],
+  "remotes": [{ "type": "streamable-http", "url": "https://hardcover.benjuntilla.com/mcp" }]
+}
