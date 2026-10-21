@@ -11,6 +11,7 @@ import type { ToolHarness } from "#test/tools-harness.ts"
 const SESSION_PROTOCOL = "2025-06-18"
 const ICONS_PROTOCOL = "2025-11-25"
 const SITE_PUBLIC = new URL("../site/public", import.meta.url).pathname
+const REGISTRY_ENTRY = new URL("../server.json", import.meta.url).pathname
 const ACCEPTED = 202
 const NOT_FOUND = 404
 const DATA_PREFIX = "data:"
@@ -24,7 +25,14 @@ const ToolList = Schema.Struct({ tools: Schema.Array(Schema.Struct({ name: Schem
 const ToolCalled = Schema.Struct({ isError: Schema.Boolean })
 const InitializeMessage = Schema.fromJsonString(Schema.Struct({ result: Initialized }))
 const Icon = Schema.Struct({ src: Schema.String })
-const ServerInfo = Schema.Struct({ icons: Schema.Array(Icon) })
+const ServerInfo = Schema.Struct({ icons: Schema.Array(Icon), version: Schema.String, websiteUrl: Schema.String })
+/** The parts of the MCP Registry entry that must agree with what the server reports. */
+const RegistryEntry = Schema.Struct({
+  icons: Schema.Array(Icon),
+  remotes: Schema.Array(Schema.Struct({ url: Schema.String })),
+  version: Schema.String,
+  websiteUrl: Schema.String,
+})
 const IconsMessage = Schema.fromJsonString(Schema.Struct({ result: Schema.Struct({ serverInfo: ServerInfo }) }))
 const ToolListMessage = Schema.fromJsonString(Schema.Struct({ result: ToolList }))
 const ToolCallMessage = Schema.fromJsonString(Schema.Struct({ result: ToolCalled }))
@@ -98,6 +106,21 @@ const callsInSession = (inSession: SessionHeaders): Effect.Effect<void, Schema.S
     expect(unknown.status).toBe(NOT_FOUND)
   })
 
+const RegistryEntryJson = Schema.fromJsonString(RegistryEntry)
+const readRegistryEntry = Effect.promise(() => Bun.file(REGISTRY_ENTRY).text())
+const registryEntry = readRegistryEntry.pipe(Effect.flatMap(Schema.decodeEffect(RegistryEntryJson)))
+
+/**
+ * The paths of some URLs, so entries pointing at another origin still compare.
+ * @param {ReadonlyArray} items Things with a `src` or `url`.
+ * @returns {ReadonlyArray<string>} Their paths.
+ */
+const urlPaths = (items: ReadonlyArray<Readonly<{ src: string } | { url: string }>>): ReadonlyArray<string> =>
+  pipe(
+    items,
+    Arr.map((item) => new URL("src" in item ? item.src : item.url).pathname),
+  )
+
 const servesIcons = Effect.gen(function* servesIcons() {
   const init = yield* post({
     body: {
@@ -121,6 +144,18 @@ const servesIcons = Effect.gen(function* servesIcons() {
     { exists: true, src: `${MCP_ORIGIN}/icon-48.png` },
     { exists: true, src: `${MCP_ORIGIN}/icon-512.png` },
   ])
+  const entry = yield* registryEntry
+  expect({
+    icons: urlPaths(entry.icons),
+    mcpPath: urlPaths(entry.remotes),
+    version: entry.version,
+    websiteUrl: entry.websiteUrl,
+  }).toEqual({
+    icons: urlPaths(message.result.serverInfo.icons),
+    mcpPath: ["/mcp"],
+    version: message.result.serverInfo.version,
+    websiteUrl: message.result.serverInfo.websiteUrl,
+  })
 })
 
 const sessionFlow = Effect.gen(function* sessionFlow() {
@@ -136,5 +171,6 @@ describe("protocol", () => {
 
   test("2025-06-18 clients get a session, and only the tools their scopes allow", () => runtime.runPromise(sessionFlow))
 
-  test("2025-11-25 clients get icons that the site serves from the server's own origin", () => runtime.runPromise(servesIcons))
+  test("2025-11-25 clients get icons that the site serves from the server's own origin, matching server.json", () =>
+    runtime.runPromise(servesIcons))
 })
