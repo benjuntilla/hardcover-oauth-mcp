@@ -28,13 +28,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check the tag matches server.json
+      - name: Check the tag matches package.json and server.json
         run: |
-          expected="v$(jq -r .version server.json)"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match server.json version ($expected)"
-            exit 1
-          fi
+          for file in package.json server.json; do
+            expected="v$(jq -r .version "$file")"
+            if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match $file version ($expected)"
+              exit 1
+            fi
+          done
       - name: Install mcp-publisher
         run: |
           curl -fsSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
