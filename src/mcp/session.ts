@@ -1,5 +1,5 @@
 import { Context } from "effect"
-import type { ExecuteGraphQL } from "#src/hardcover/client.ts"
+import type { Hardcover } from "#src/hardcover/sdk.ts"
 
 interface SessionShape {
   readonly hcUserId: number
@@ -7,7 +7,8 @@ interface SessionShape {
   readonly scopes: ReadonlySet<string>
   readonly supporter: boolean
   readonly librarianRoles: ReadonlyArray<string> | null
-  readonly graphql: ExecuteGraphQL
+  /** The connection's SDK client. Raw GraphQL tools use `client.graphql`. */
+  readonly hardcover: Hardcover
 }
 
 /**

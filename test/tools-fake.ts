@@ -3,7 +3,7 @@
  * variables against Hardcover's published schema, records it, then answers
  * every root field with its fixture.
  */
-import { Array as Arr, Effect, Option, Record as Rec, Ref, pipe } from "effect"
+import { Array as Arr, Effect, Option, Predicate, Record as Rec, Ref, pipe } from "effect"
 import type { DocumentNode, FieldNode, GraphQLSchema, OperationDefinitionNode } from "graphql"
 import { Kind, buildSchema, getVariableValues, parse, validate } from "graphql"
 import type { ExecuteGraphQL } from "#src/hardcover/client.ts"
@@ -94,11 +94,42 @@ const problemsWith = (check: Check): ReadonlyArray<string> => {
   )
 }
 
+const SNAKE_BOUNDARY = /_(?<letter>[a-z])/gv
+
+const camel = (name: string): string => name.replaceAll(SNAKE_BOUNDARY, (_match, letter: string) => letter.toUpperCase())
+
+/**
+ * A value with snake_case object keys also present in camelCase.
+ * @param {unknown} value The fixture value.
+ * @returns {unknown} The same value, with camelCase copies of object keys.
+ */
+const withCamel = (value: unknown): unknown => {
+  if (Arr.isArray(value)) {
+    return pipe(value, Arr.map(withCamel))
+  }
+  if (Predicate.isObject(value)) {
+    return pipe(
+      Rec.toEntries(value),
+      Arr.flatMap(([key, item]) => {
+        const next = withCamel(item)
+        return key === camel(key) ? [[key, next] as const] : [[key, next] as const, [camel(key), next] as const]
+      }),
+      Rec.fromEntries,
+    )
+  }
+  return value
+}
+
 const answer = (operation: OperationDefinitionNode, variables: Readonly<Record<string, unknown>>): Record<string, unknown> =>
   pipe(
     operation.selectionSet.selections,
     Arr.filter(isField),
-    Arr.map((field) => [field.alias?.value ?? field.name.value, fixture({ field: field.name.value, variables })] as const),
+    Arr.flatMap((field) => {
+      const name = field.name.value
+      const value = withCamel(fixture({ field: name, variables }))
+      const key = field.alias?.value ?? name
+      return [[key, value] as const, [camel(key), value] as const]
+    }),
     Rec.fromEntries,
   )
 

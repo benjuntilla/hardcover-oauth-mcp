@@ -17,7 +17,7 @@ import { indexOperations, indexTypes } from "#root/scripts/sync-index.ts"
 import { FetchHttpClient } from "effect/http"
 import { buildSchema } from "graphql"
 
-const PINNED = "aaacbc047e4a81c99c5263cd400532b0a3933d1d"
+const PINNED = "63fcedf3766d22b8f3bc6dc113a592e47a5ae69c"
 const ARG_INDEX = 2
 const KILOBYTE = 1024
 const SCHEMA_PATH = "schema.graphql"
@@ -44,7 +44,7 @@ const CapabilityScope = Schema.Struct({
 const CapabilityOperation = Schema.Struct({
   operation: Schema.String,
   tables: Schema.Array(Schema.String),
-  type: Schema.String,
+  type: Schema.NullOr(Schema.String),
 })
 
 const Capabilities = Schema.Struct({

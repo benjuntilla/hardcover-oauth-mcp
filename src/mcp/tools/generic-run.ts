@@ -1,14 +1,12 @@
 /** Routes a caller-written GraphQL document to the tool that is allowed to run it. */
-import { Array as Arr, Effect, Option, Schema, String as Str, Struct, pipe } from "effect"
+import { Array as Arr, Effect, Option, Schema, String as Str, pipe } from "effect"
 import type { GuardResult, Inspection } from "#src/hardcover/guard.ts"
-import { getOperationAST, parse } from "graphql"
 import { inspect, missingScopes } from "#src/hardcover/guard.ts"
-import { GraphQL } from "effect/graphql"
 import type { GraphQLParams } from "./generic-tools.ts"
 import { HardcoverError } from "#src/hardcover/errors.ts"
 import { OPERATIONS } from "#src/hardcover/api-index.ts"
 import { Session } from "#src/mcp/session.ts"
-import { run } from "./common.ts"
+import { call } from "./common.ts"
 
 const CATALOG_PREFIX = "write:catalog"
 const DELETE_PREFIX = "delete_"
@@ -68,58 +66,20 @@ const forbidden = (missing: ReadonlyArray<string>): HardcoverError =>
   })
 
 const GraphQLData = Schema.Record(Schema.String, Schema.Unknown)
-/** The variables of any document. */
-const AnyVariables = Schema.Record(Schema.String, Schema.Unknown)
-/** Any `data`; `runDocument` narrows it to an object. */
-const AnyData = Schema.Unknown
-const NO_VARIABLES: Readonly<Record<string, unknown>> = {}
-
-type AnyOperation = GraphQL.Operation<OperationKind, string, typeof AnyVariables, typeof AnyData>
-
-const parsed = Option.liftThrowable(parse)
 
 /**
  * The name of the operation the guard chose: the one called `operationName`, or the document's only one.
  * @param {typeof GraphQLParams.Type} params The caller's document and operation name, already accepted by the guard.
  * @returns {Option.Option<string>} The operation's own name, or none when it is anonymous.
  */
-const chosenName = (params: typeof GraphQLParams.Type): Option.Option<string> =>
-  pipe(
-    parsed(params.query),
-    Option.flatMapNullishOr((document) => getOperationAST(document, params.operationName)),
-    Option.flatMapNullishOr((operation) => operation.name?.value),
-  )
-
 /**
- * The caller's document as an operation of its own name and kind.
- * @param {object} options The document, its name, and its kind.
- * @param {string} options.document The caller's document.
- * @param {OperationKind} options.kind Whether it is a query or a mutation.
- * @param {string} options.name The document's own name for the operation.
- * @returns {AnyOperation} The operation.
- */
-const operationOf = (options: Readonly<{ document: string; kind: OperationKind; name: string }>): AnyOperation => {
-  const fields = { document: options.document, result: AnyData, variables: AnyVariables }
-  return options.kind === "mutation" ? GraphQL.mutation(options.name, fields) : GraphQL.query(options.name, fields)
-}
-
-/**
- * Sends an accepted document. A named operation runs through `run` under its own name. An anonymous one is sent
- * without an operation name, which `run` always sends and Hasura refuses for an anonymous operation.
- * @param {object} options The document's kind and the caller's document.
- * @param {OperationKind} options.kind Whether the document is a query or a mutation.
- * @param {typeof GraphQLParams.Type} options.params The caller's document and variables.
+ * Sends an accepted document through the SDK, with the connection's auth, pacing, and retries.
+ * Writes are never sent twice.
+ * @param {typeof GraphQLParams.Type} params The caller's document and variables.
  * @returns {Effect.Effect<unknown, HardcoverError, Session>} The GraphQL `data`.
  */
-const sendDocument = (
-  options: Readonly<{ kind: OperationKind; params: typeof GraphQLParams.Type }>,
-): Effect.Effect<unknown, HardcoverError, Session> => {
-  const { kind, params } = options
-  return Option.match(chosenName(params), {
-    onNone: () => Session.use((session) => session.graphql(Struct.pick(params, ["query", "variables"]), { mutation: kind === "mutation" })),
-    onSome: (name) => run(operationOf({ document: params.query, kind, name }))(params.variables ?? NO_VARIABLES),
-  })
-}
+const sendDocument = (params: typeof GraphQLParams.Type): Effect.Effect<unknown, HardcoverError, Session> =>
+  call((hardcover) => hardcover.client.graphql(params.query, params.variables))
 
 const checked = (
   options: Readonly<{ allow: Allowance; expect: OperationKind; params: typeof GraphQLParams.Type }>,
@@ -152,7 +112,7 @@ const runDocument = (
 ): Effect.Effect<Readonly<{ data: Readonly<Record<string, unknown>> }>, HardcoverError, Session> =>
   Effect.gen(function* runCheckedDocument() {
     yield* checked(options)
-    const raw = yield* sendDocument({ kind: options.expect, params: options.params })
+    const raw = yield* sendDocument(options.params)
     // The client already turns a response without a `data` object into a defect; this only narrows the type.
     const data = yield* Schema.decodeUnknownEffect(GraphQLData)(raw).pipe(
       Effect.catchTag("SchemaError", () => Effect.die("Hardcover's response data was not an object")),

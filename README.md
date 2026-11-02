@@ -6,7 +6,7 @@ Manage your [Hardcover](https://hardcover.app) library, reading progress, review
 
 - **Works in web and mobile clients.** The public instance is a hosted remote server, so Claude on the web and on phones, ChatGPT, and other remote clients can connect to it. Other Hardcover MCP servers run on your own computer, where only desktop clients can reach them.
 - **Sign in with Hardcover (OAuth).** No pasting unsafe API keys. Each person connects their own account through Hardcover's OAuth and picks which permissions to grant.
-- **53 read/write tools.** 47 custom task-oriented tools cover the library, progress, reviews, journal, lists, goals, follows, notifications, and vibes. Six raw GraphQL and schema-discovery tools reach anything else in the Hardcover API.
+- **61 read/write tools.** The task tools cover the library, progress, reviews, journal, lists, goals, follows, notifications, vibes, similar books, profile pins, and imports. Six raw GraphQL and schema-discovery tools reach anything else in the Hardcover API.
 
 ## Example workflows
 
@@ -106,7 +106,7 @@ Kinds: read, write (adds or changes data), and delete. A tool appears only if yo
 
 <!-- tools:start (mise run docs:tools) -->
 <details>
-<summary>All 53 tools</summary>
+<summary>All 61 tools</summary>
 
 | Tool | What it does | Kind | Scopes | Needs |
 | --- | --- | --- | --- | --- |
@@ -123,6 +123,7 @@ Kinds: read, write (adds or changes data), and delete. A tool appears only if yo
 | `hardcover_get_author` | Get an author | read | `read:catalog` |  |
 | `hardcover_get_series` | Get a series | read | `read:catalog` |  |
 | `hardcover_trending_books` | Trending books | read | `read:catalog` |  |
+| `hardcover_similar_books` | Similar books | read | `read:catalog` |  |
 | `hardcover_list_vibes` | List your vibes | read | `read:vibes` |  |
 | `hardcover_create_vibe` | Create a vibe | write | `write:vibes` | Supporter |
 | `hardcover_list_library` | List your library | read | `read:library` |  |
@@ -157,6 +158,13 @@ Kinds: read, write (adds or changes data), and delete. A tool appears only if yo
 | `hardcover_create_goal` | Create a reading goal | write | `write:goals` |  |
 | `hardcover_update_goal` | Edit a reading goal | write | `write:goals`, `read:goals` |  |
 | `hardcover_delete_goal` | Delete a reading goal | delete | `write:goals`, `read:goals` |  |
+| `hardcover_list_pins` | List profile pins | read | `read:me:content` |  |
+| `hardcover_pin_item` | Pin to your profile | write | `write:library` |  |
+| `hardcover_unpin_item` | Remove a profile pin | delete | `write:library` |  |
+| `hardcover_reorder_pins` | Reorder profile pins | write | `write:library` |  |
+| `hardcover_user_settings` | Read your settings | read | `read:me:content` |  |
+| `hardcover_match_import` | Match an import row | write | `read:account`, `write:library` |  |
+| `hardcover_create_imported_book` | Create a book from an import row | write | `read:account`, `write:library` |  |
 | `hardcover_find_operations` | Find Hardcover API operations | read | none |  |
 | `hardcover_describe_type` | Describe a Hardcover GraphQL type | read | none |  |
 | `hardcover_query` | Run a Hardcover GraphQL query | read | none |  |

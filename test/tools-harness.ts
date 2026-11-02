@@ -5,6 +5,8 @@
  */
 import { Array as Arr, Context, Effect, Layer, Option, Schema, Struct } from "effect"
 import type { GraphQLCall } from "#test/tools-fake.ts"
+import { HardcoverClient } from "@hardcover/sdk"
+import type { HardcoverClientOptions } from "@hardcover/sdk"
 import { ME } from "#test/tools-fixtures.ts"
 import { makeFakeHardcover } from "#test/tools-fake.ts"
 import { makeMcpHandler } from "#src/mcp/server.ts"
@@ -26,6 +28,24 @@ class ToolHarness extends Context.Service<
 >()("hardcover-oauth-mcp/test/tools-harness/ToolHarness") {}
 
 const JsonText = Schema.fromJsonString(Schema.Unknown)
+const GraphQLBody = Schema.Struct({
+  query: Schema.String,
+  variables: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+})
+const HttpReply = Schema.Struct({
+  body: JsonText,
+  headers: Schema.Record(Schema.String, Schema.String),
+  status: Schema.Finite,
+})
+const OK = 200
+
+/**
+ * The SDK sees a GraphQL error body when the fake rejects the document.
+ * @param {{ readonly message: string }} error The rejection.
+ * @returns {Effect.Effect<typeof HttpReply.Type>} The error response.
+ */
+const failure = (error: { readonly message: string }): Effect.Effect<typeof HttpReply.Type> =>
+  Effect.succeed({ body: { errors: [{ message: error.message }] }, headers: {}, status: OK })
 
 /**
  * The harness for a connection granted `scopes`, disposing its handler with the runtime.
@@ -37,7 +57,32 @@ const toolHarness = (scopes: ReadonlySet<string>): Layer.Layer<ToolHarness> =>
     ToolHarness,
     Effect.gen(function* makeHarness() {
       const fake = yield* makeFakeHardcover
-      const session = { graphql: fake.graphql, hcUserId: ME, librarianRoles: ["librarian"], scopes, supporter: true, username: "reader" }
+      const context = yield* Effect.context()
+      const encode = Schema.encodeEffect(HttpReply)
+      const transport: HardcoverClientOptions["transport"] = {
+        send: (request) =>
+          Effect.runPromiseWith(context)(
+            Effect.gen(function* answer() {
+              const body = yield* Schema.decodeEffect(JsonText)(request.body)
+              const decodeBody = Schema.decodeUnknownEffect(GraphQLBody)
+              const document = yield* decodeBody(body)
+              const kind = document.query.trimStart()
+              const sent = { mutation: kind.startsWith("mutation") }
+              const data = yield* fake.graphql(document, sent)
+              const reply = { body: { data }, headers: {}, status: OK }
+              return reply
+            }).pipe(Effect.catch(failure), Effect.flatMap(encode)),
+          ),
+      }
+      const client = new HardcoverClient({ endpoint: "https://example.test/graphql", token: "test", transport })
+      const session = {
+        hardcover: { client, userId: ME },
+        hcUserId: ME,
+        librarianRoles: ["librarian"],
+        scopes,
+        supporter: true,
+        username: "reader",
+      }
       const mcp = yield* Effect.acquireRelease(
         Effect.sync(() => makeMcpHandler({ origin: MCP_ORIGIN, session })),
         (handler) => Effect.promise(() => handler.dispose()),

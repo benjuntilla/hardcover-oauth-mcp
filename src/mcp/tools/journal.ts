@@ -1,19 +1,16 @@
-/** Reading journal entries (notes, quotes). Read: read:journal. Write: write:library. */
-import { Array as Arr, DateTime, Effect, Option, Predicate, Record as Rec, Schema, pipe } from "effect"
-import { DateString, Id, Json, JsonList, Limit, Offset, Privacy, first, payload, privacyId } from "./common.ts"
-import { bookJournalOf, defaultPrivacy, insertJournal, journalOf, removeJournal, updateJournal } from "./journal-operations.ts"
+/** Reading journal entries, through the SDK's journal resource. */
+import { Array as Arr, DateTime, Effect, Option, Predicate, Schema, pipe } from "effect"
+import { DateString, Id, JOURNAL_EVENT, Json, JsonList, Limit, Offset, Privacy, call, privacySetting } from "./common.ts"
+import { defined, isBlank } from "./sdk-fields.ts"
 import { HardcoverError } from "#src/hardcover/errors.ts"
-import type { JournalTag } from "./journal-operations.ts"
-import type { PrivacyName } from "./common.ts"
-import { Session } from "#src/mcp/session.ts"
+import type { JournalEvent } from "@hardcover/sdk"
 import { Toolkit } from "effect/ai"
 import { hardcoverTool } from "#src/mcp/define.ts"
 
 const DEFAULT_JOURNAL_LIMIT = 20
 const MAX_JOURNAL_LIMIT = 100
 const DEFAULT_JOURNAL_OFFSET = 0
-const DEFAULT_ENTRY_KIND = "note"
-const DEFAULT_SPOILER = false
+const TAG_NOT_SPOILER = false
 
 const Tag = Schema.Struct({
   category: Schema.NonEmptyString.annotate({ description: "Tag category, e.g. Genre, Mood, Content Warning, Tag." }),
@@ -22,30 +19,13 @@ const Tag = Schema.Struct({
 })
 
 const JournalEntryKind = Schema.Literals(["note", "quote"])
-
-const ListJournalParams = Schema.Struct({
-  bookId: Schema.optionalKey(Id("Book id.")),
-  limit: Limit({ fallback: DEFAULT_JOURNAL_LIMIT, max: MAX_JOURNAL_LIMIT }),
-  offset: Offset,
-})
-
-const AddJournalParams = Schema.Struct({
-  bookId: Id("Book id."),
-  date: Schema.optionalKey(DateString("Entry date, default today")),
-  editionId: Schema.optionalKey(Id("Edition.")),
-  kind: Schema.optionalKey(JournalEntryKind.annotate({ description: "Default note." })),
-  privacy: Schema.optionalKey(Privacy),
-  tags: Schema.optionalKey(Schema.Array(Tag)),
-  text: Schema.NonEmptyString,
-})
-
-const UpdateJournalParams = Schema.Struct({
-  date: Schema.optionalKey(DateString("Entry date")),
-  entryId: Id("Journal entry id."),
-  kind: Schema.optionalKey(JournalEntryKind),
-  privacy: Schema.optionalKey(Privacy),
-  text: Schema.optionalKey(Schema.NonEmptyString),
-})
+const OptionalKind = Schema.optionalKey(JournalEntryKind)
+const OptionalDate = Schema.optionalKey(DateString("Entry date"))
+const OptionalEdition = Schema.optionalKey(Id("Edition."))
+const OptionalPrivacy = Schema.optionalKey(Privacy)
+const OptionalTags = Schema.optionalKey(Schema.Array(Tag))
+const OptionalText = Schema.optionalKey(Schema.NonEmptyString)
+const OptionalBook = Schema.optionalKey(Id("Book id."))
 
 const ListJournal = hardcoverTool({
   description:
@@ -53,7 +33,11 @@ const ListJournal = hardcoverTool({
     "Pass bookId for one book.",
   kind: "read",
   name: "hardcover_list_journal",
-  parameters: ListJournalParams,
+  parameters: Schema.Struct({
+    bookId: OptionalBook,
+    limit: Limit({ fallback: DEFAULT_JOURNAL_LIMIT, max: MAX_JOURNAL_LIMIT }),
+    offset: Offset,
+  }),
   scopes: ["read:journal"],
   success: Schema.Struct({ entries: JsonList }),
   title: "List journal entries",
@@ -64,7 +48,15 @@ const AddJournalEntry = hardcoverTool({
     "Adds a note or quote to the user's reading journal for a book. Without privacy, uses the account's default activity privacy.",
   kind: "create",
   name: "hardcover_add_journal_entry",
-  parameters: AddJournalParams,
+  parameters: Schema.Struct({
+    bookId: Id("Book id."),
+    date: OptionalDate,
+    editionId: OptionalEdition,
+    kind: OptionalKind,
+    privacy: OptionalPrivacy,
+    tags: OptionalTags,
+    text: Schema.NonEmptyString,
+  }),
   scopes: ["write:library"],
   success: Schema.Struct({ entry: Json }),
   title: "Add a journal entry",
@@ -75,7 +67,13 @@ const UpdateJournalEntry = hardcoverTool({
   destructive: true,
   kind: "update",
   name: "hardcover_update_journal_entry",
-  parameters: UpdateJournalParams,
+  parameters: Schema.Struct({
+    date: OptionalDate,
+    entryId: Id("Journal entry id."),
+    kind: OptionalKind,
+    privacy: OptionalPrivacy,
+    text: OptionalText,
+  }),
   scopes: ["write:library"],
   success: Schema.Struct({ entry: Json }),
   title: "Edit a journal entry",
@@ -91,110 +89,83 @@ const DeleteJournalEntry = hardcoverTool({
   title: "Delete a journal entry",
 })
 
-/**
- * Today's date in UTC, as Hardcover stores entry dates.
- * @returns {Effect.Effect<string>} The date as YYYY-MM-DD.
- */
-const today = (): Effect.Effect<string> =>
-  Effect.gen(function* currentDate() {
-    const now = yield* DateTime.now
-    return DateTime.formatIsoDateUtc(now)
-  })
+const journalEvent = (kind: "note" | "quote" | undefined): JournalEvent | undefined =>
+  Option.getOrUndefined(Predicate.isUndefined(kind) ? Option.none() : Option.some(JOURNAL_EVENT[kind]))
 
-/**
- * The privacy setting to store, or none when the caller left it to the account default.
- * @param {PrivacyName | undefined} privacy The privacy the caller asked for.
- * @returns {Option.Option<number>} Hardcover's privacy id, when one was given.
- */
-const givenPrivacy = (privacy: PrivacyName | undefined): Option.Option<number> =>
-  Option.map(Option.fromNullishOr(privacy), (name) => privacyId(name))
-
-/**
- * A journal tag in the shape Hardcover's create mutation expects.
- * @param {typeof Tag.Type} tag The tag the caller sent.
- * @returns {JournalTag} The tag, with spoiler defaulting to false.
- */
-const journalTag = (tag: typeof Tag.Type): JournalTag => ({
+const journalTag = (tag: typeof Tag.Type): { readonly category: string; readonly spoiler: boolean; readonly tag: string } => ({
   category: tag.category,
-  spoiler: pipe(
-    tag.spoiler,
-    Option.fromNullishOr,
-    Option.getOrElse(() => DEFAULT_SPOILER),
-  ),
+  spoiler: tag.spoiler ?? TAG_NOT_SPOILER,
   tag: tag.tag,
 })
 
-/**
- * The account's default activity privacy, used when a journal entry names none.
- * @returns {Effect.Effect<number, HardcoverError, Session>} Hardcover's privacy setting id.
- */
-const defaultActivityPrivacy: Effect.Effect<number, HardcoverError, Session> = Effect.gen(function* accountPrivacy() {
-  const data = yield* defaultPrivacy({})
-  const account = yield* first({ rows: data.me, what: "account" })
-  return account.activity_privacy_settings_id
-})
+const journalTags = (tags: ReadonlyArray<typeof Tag.Type> | undefined): Option.Option<ReadonlyArray<ReturnType<typeof journalTag>>> =>
+  Option.map(Option.fromNullishOr(tags), (rows) => pipe(rows, Arr.map(journalTag)))
 
 const journalHandlers = {
   hardcover_add_journal_entry: Effect.fn(function* addJournalEntry(params: typeof AddJournalEntry.parametersSchema.Type) {
-    // Hardcover requires a privacy setting here; without one, use the account's default activity privacy.
-    const requestedPrivacy = givenPrivacy(params.privacy)
-    const privacy = yield* Option.match(requestedPrivacy, {
-      onNone: () => defaultActivityPrivacy,
-      onSome: Effect.succeed,
-    })
-    const fallbackDate = yield* today()
-    const requestedDate: Option.Option<string> = Option.fromNullishOr(params.date)
-    const entryDate = Option.getOrElse(requestedDate, () => fallbackDate)
-    const tags = pipe(
-      params.tags ?? [],
-      Arr.map((tag) => journalTag(tag)),
+    const date = params.date ?? DateTime.formatIsoDateUtc(yield* DateTime.now)
+    const tags = Option.getOrUndefined(journalTags(params.tags))
+    const entry = yield* call((hardcover) =>
+      hardcover.client.journal.add(
+        params.bookId,
+        defined({
+          date,
+          editionId: params.editionId,
+          entry: params.text,
+          event: journalEvent(params.kind),
+          privacy: privacySetting(params.privacy),
+          tags,
+        }),
+      ),
     )
-    const data = yield* insertJournal({
-      object: {
-        action_at: entryDate,
-        book_id: params.bookId,
-        edition_id: params.editionId,
-        entry: params.text,
-        event: params.kind ?? DEFAULT_ENTRY_KIND,
-        privacy_setting_id: privacy,
-        tags,
-      },
-    })
-    const inserted = yield* payload({ field: "insert_reading_journal", value: data.insert_reading_journal })
-    return { entry: inserted.reading_journal }
+    return { entry }
   }),
 
   hardcover_delete_journal_entry: Effect.fn(function* deleteJournalEntry({ entryId }: typeof DeleteJournalEntry.parametersSchema.Type) {
-    const data = yield* removeJournal({ id: entryId })
-    yield* payload({ field: "delete_reading_journal", value: data.delete_reading_journal })
+    const removed = yield* call((hardcover) =>
+      hardcover.client.graphql<{ delete_reading_journal: { id: number } | null }>(
+        "mutation DeleteJournal($id: Int!) { delete_reading_journal(id: $id) { id } }",
+        { id: entryId },
+      ),
+    )
+    if (Predicate.isNull(removed.delete_reading_journal)) {
+      return yield* HardcoverError.make({ kind: "not_found", message: `No journal entry ${entryId}.` })
+    }
     return { deleted: entryId }
   }),
 
-  hardcover_list_journal: Effect.fn(function* listJournal({
-    bookId,
-    limit = DEFAULT_JOURNAL_LIMIT,
-    offset = DEFAULT_JOURNAL_OFFSET,
-  }: typeof ListJournal.parametersSchema.Type) {
-    const { hcUserId } = yield* Session
-    const data = yield* Predicate.isNotUndefined(bookId)
-      ? bookJournalOf({ bookId, limit, offset, userId: hcUserId })
-      : journalOf({ limit, offset, userId: hcUserId })
-    return { entries: data.reading_journals }
+  hardcover_list_journal: Effect.fn(function* listJournal(params: typeof ListJournal.parametersSchema.Type) {
+    const limit = params.limit ?? DEFAULT_JOURNAL_LIMIT
+    const offset = params.offset ?? DEFAULT_JOURNAL_OFFSET
+    const { bookId } = params
+    if (Predicate.isNotUndefined(bookId)) {
+      const page = yield* call((hardcover) => hardcover.client.journal.forBook(bookId, { limit, offset }))
+      return { entries: page.items }
+    }
+    const page = yield* call((hardcover) =>
+      hardcover.client.graphql<{ reading_journals: ReadonlyArray<unknown> }>(
+        `query Journal($userId: Int!, $limit: Int!, $offset: Int!) {
+          reading_journals(where: {user_id: {_eq: $userId}}, order_by: {action_at: desc}, limit: $limit, offset: $offset) {
+            id book_id event entry action_at privacy_setting_id edition_id
+          }
+        }`,
+        { limit, offset, userId: hardcover.userId },
+      ),
+    )
+    return { entries: page.reading_journals }
   }),
 
   hardcover_update_journal_entry: Effect.fn(function* updateJournalEntry(params: typeof UpdateJournalEntry.parametersSchema.Type) {
-    const object = {
-      action_at: params.date,
+    const patch = defined({
+      date: params.date,
       entry: params.text,
-      event: params.kind,
-      privacy_setting_id: Option.getOrUndefined(givenPrivacy(params.privacy)),
-    }
-    if (pipe(object, Rec.every(Predicate.isUndefined))) {
+      event: journalEvent(params.kind),
+      privacy: privacySetting(params.privacy),
+    })
+    if (isBlank(patch)) {
       return yield* HardcoverError.make({ kind: "invalid", message: "Nothing to change." })
     }
-    const data = yield* updateJournal({ id: params.entryId, object })
-    const updated = yield* payload({ field: "update_reading_journal", value: data.update_reading_journal })
-    return { entry: updated.reading_journal }
+    return { entry: yield* call((hardcover) => hardcover.client.journal.update(params.entryId, patch)) }
   }),
 }
 

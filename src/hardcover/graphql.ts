@@ -257,7 +257,7 @@ const isAllowedUser: {
  * Application module, not a public API.
  * @internal
  */
-export { accountQueries, fetchAccount, isAllowedUser, parseAccount }
+export { fetchAccount, isAllowedUser }
 /**
  * Application module, not a public API.
  * @internal

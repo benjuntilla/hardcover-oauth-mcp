@@ -85,11 +85,16 @@ const onlyOperation = (operations: ReadonlyArray<OperationDefinitionNode>): Opti
 const chosenOperation = (
   operations: ReadonlyArray<OperationDefinitionNode>,
   operationName: string | undefined,
-): Option.Option<OperationDefinitionNode> =>
-  Predicate.isNotUndefined(operationName) ? byName(operations, operationName) : onlyOperation(operations)
+): Option.Option<OperationDefinitionNode> => {
+  // The SDK executes the document's first operation and ignores operationName, so a later named operation would bypass the guard.
+  if (operations.length !== SINGLE_OPERATION) {
+    return Option.none()
+  }
+  return Predicate.isNotUndefined(operationName) ? byName(operations, operationName) : onlyOperation(operations)
+}
 
 const missingOperationMessage = (operations: ReadonlyArray<OperationDefinitionNode>): string =>
-  operations.length === NO_OPERATIONS ? "The document has no operation." : "Send exactly one operation (or name it with operationName)."
+  operations.length === NO_OPERATIONS ? "The document has no operation." : "Send exactly one operation."
 
 const kindMismatch = (operation: OperationKind, expect: "query" | "mutation"): Option.Option<string> => {
   if (operation === expect) {

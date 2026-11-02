@@ -31,6 +31,7 @@ const READONLY_ENOUGH: Readonly<Record<string, ReadonlyArray<string>>> = {
     "OAuthResourceContext",
     "TokenExchangeCallbackOptions",
   ],
+  "@hardcover/sdk": ["HardcoverClient", "HardcoverError"],
   "@types/mdast": ["Link"],
   effect: [
     "Any",
@@ -107,6 +108,31 @@ export default defineConfig({
       // An entry point that provides its platform layer to the main effect, which the rule allows.
       files: ["scripts/brand.ts"],
       rules: { "effecttsgo/strict-effect-provide": "off" },
+    },
+    {
+      // These helpers return the SDK's library row. Naming that row loses its fields under exact optional types.
+      files: ["src/mcp/tools/library-handlers.ts"],
+      rules: { "typescript/explicit-function-return-type": "off" },
+    },
+    {
+      // The toolkit is the join of every tool module. Splitting it would only move the same imports.
+      files: ["src/mcp/toolkit.ts", "src/mcp/tools/vibes.ts"],
+      rules: { "eslint/sort-imports": "off", "import/max-dependencies": "off" },
+    },
+    {
+      // The guard and the library handlers each own one responsibility; splitting them would only move the same code.
+      files: ["src/hardcover/guard.ts", "src/mcp/tools/library-handlers.ts"],
+      rules: { "eslint/max-lines": "off", "eslint/sort-imports": "off" },
+    },
+    {
+      // Two-argument constructors are not Effect pipes. The SDK client is one of them.
+      files: ["src/hardcover/sdk.ts"],
+      rules: { "effecttsgo/missing-pipeable-signature": "off" },
+    },
+    {
+      // `call` passes the session client into the caller's SDK method. The rule reads that as a thisArg.
+      files: ["src/mcp/tools/common.ts", "src/mcp/tools/account.ts", "src/mcp/tools/vibes.ts"],
+      rules: { "unicorn/no-array-method-this-argument": "off" },
     },
   ],
   plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node", "jsdoc", "jest", "effecttsgo"],

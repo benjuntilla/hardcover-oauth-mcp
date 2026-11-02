@@ -9,7 +9,7 @@ import type { ConnectionStore } from "#src/connection/storage.ts"
 import type { ForwardedGrant } from "#src/connection/grant.ts"
 import type { McpHandler } from "#src/mcp/server.ts"
 import { REVOKED_MESSAGE } from "#src/connection/state.ts"
-import { makeExecutor } from "#src/hardcover/client.ts"
+import { makeHardcover } from "#src/hardcover/sdk.ts"
 import { makeMcpHandler } from "#src/mcp/server.ts"
 import { reauthorize } from "#src/mcp/jsonrpc.ts"
 
@@ -62,7 +62,7 @@ class McpServers {
     const key = pipe(grant.scopes, Arr.sortBy(Order.String), Arr.prepend(origin), Arr.join(" "))
     return Option.getOrElse(Option.fromNullishOr(this.#servers.get(key)), () => {
       const session = {
-        graphql: makeExecutor(this.#options),
+        hardcover: makeHardcover(this.#options, state.hcUserId),
         hcUserId: state.hcUserId,
         librarianRoles: grant.librarianRoles,
         scopes: new Set(grant.scopes),
