@@ -3,9 +3,9 @@
 
 [tools]
 actionlint = "1.7.12"
-bun = "1.4.3"
+bun = "1.4.4"
 hk = "2.10.0"
-vale = "3.24.0"
+vale = "3.25.1"
 zizmor = "1.31.1"
 
 # After `mise install`, install dependencies too, so setup is one command.
