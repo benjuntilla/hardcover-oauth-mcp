@@ -2,9 +2,10 @@
  * `/callback`: exchanges Hardcover's code, records the tokens in a
  * `HardcoverConnection`, and completes the MCP client's authorization.
  */
-import { Array as Arr, Crypto, Effect, Option, Result, String as Str, Struct, pipe } from "effect"
-import type { AuthorizeRequest, UpstreamData } from "#src/oauth/consent.ts"
+import { Array as Arr, Effect, Option, Result, String as Str, Struct, pipe } from "effect"
 import type { Env, GrantProps, HardcoverEndpoints } from "#src/env.ts"
+import type { AuthorizeRequest, UpstreamData } from "#src/oauth/consent.ts"
+import { SecureRandom } from "effect/crypto"
 import { exchangeCode, revokeToken } from "#src/hardcover/oauth-calls.ts"
 import { fetchAccount, isAllowedUser } from "#src/hardcover/graphql.ts"
 import { html, messagePage, redirect } from "#src/oauth/pages.ts"
@@ -129,7 +130,7 @@ const refuseAccount = (options: {
  * @param {ReadonlyArray<string>} options.granted The scopes Hardcover granted.
  * @param {TokenSet} options.tokens The tokens.
  * @param {Upstream} options.upstream The recovered request.
- * @returns {Effect.Effect<Response, never, Crypto.Crypto>} The redirect back to the client.
+ * @returns {Effect.Effect<Response, never, SecureRandom.SecureRandom>} The redirect back to the client.
  */
 const connect = (options: {
   readonly account: Account
@@ -137,11 +138,11 @@ const connect = (options: {
   readonly granted: ReadonlyArray<string>
   readonly tokens: TokenSet
   readonly upstream: Upstream
-}): Effect.Effect<Response, never, Crypto.Crypto> =>
+}): Effect.Effect<Response, never, SecureRandom.SecureRandom> =>
   Effect.gen(function* storeConnection() {
     const { account, env, upstream } = options
-    const random = yield* Crypto.Crypto
-    const connectionId = yield* Effect.orDie(random.randomUUIDv4())
+    const random = yield* SecureRandom.SecureRandom
+    const connectionId = yield* random.uuidV4()
     const tokens = Struct.pick(options.tokens, ["accessToken", "accessTokenExpiresAt", "refreshToken"])
     yield* Effect.promise(() =>
       env.HARDCOVER_CONNECTION.getByName(connectionId).init({ hcUserId: account.id, tokens, username: account.username }),
@@ -174,7 +175,7 @@ const connect = (options: {
  * @param {Env} options.env The Worker bindings.
  * @param {string} options.origin This server's public origin.
  * @param {Upstream} options.upstream The recovered request.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The response.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, SecureRandom.SecureRandom | HttpClient.HttpClient>} The response.
  */
 const signIn = (options: {
   readonly code: string
@@ -182,7 +183,7 @@ const signIn = (options: {
   readonly env: Env
   readonly origin: string
   readonly upstream: Upstream
-}): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+}): Effect.Effect<Response, HardcoverOAuthError, SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* exchangeAndConnect() {
     const { env, upstream } = options
     const endpoints = hardcoverEndpoints(env)
@@ -200,9 +201,11 @@ const signIn = (options: {
 /**
  * `GET /callback`.
  * @param {AuthorizeRequest} options The request.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The response. Not finding the signed-in account is a defect.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, SecureRandom.SecureRandom | HttpClient.HttpClient>} The response. Not finding the signed-in account is a defect.
  */
-const callback = (options: AuthorizeRequest): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+const callback = (
+  options: AuthorizeRequest,
+): Effect.Effect<Response, HardcoverOAuthError, SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* finishSignIn() {
     const { env, origin, req } = options
     const { data, headers, request } = yield* Effect.promise(() => env.OAUTH_PROVIDER.finishUpstream<UpstreamData>(req))

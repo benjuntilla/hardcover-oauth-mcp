@@ -3,14 +3,14 @@
  * approved scopes and a fresh PKCE pair.
  */
 import { Array as Arr, Effect, Option, Struct } from "effect"
+import type { AuthRequest } from "@cloudflare/workers-oauth-provider"
+import type { Env } from "#src/env.ts"
+import type { HardcoverOAuthError } from "#src/hardcover/oauth-types.ts"
+import type { Digest, SecureRandom } from "effect/crypto"
+import type { HttpClient } from "effect/http"
 import { DEFAULT_SCOPES, UPSTREAM_SCOPES, normalizeScopes } from "#src/hardcover/scopes.ts"
 import { authorizationUrl, pkce } from "#src/hardcover/oauth-calls.ts"
 import { consentPage, html, redirect } from "#src/oauth/pages.ts"
-import type { AuthRequest } from "@cloudflare/workers-oauth-provider"
-import type { Crypto } from "effect"
-import type { Env } from "#src/env.ts"
-import type { HardcoverOAuthError } from "#src/hardcover/oauth-types.ts"
-import type { HttpClient } from "effect/http"
 import { consentCookieSecret } from "#src/oauth/secrets.ts"
 import { hardcoverEndpoints } from "#src/env.ts"
 
@@ -42,14 +42,14 @@ const effectiveScopes = (request: AuthRequest): ReadonlyArray<string> =>
  * @param {string} options.origin This server's public origin.
  * @param {AuthRequest} options.request The approved request.
  * @param {Option.Option<Headers>} options.headers The consent response headers, when consent was just given.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The redirect to Hardcover.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient>} The redirect to Hardcover.
  */
 const toHardcover = (options: {
   readonly env: Env
   readonly origin: string
   readonly request: AuthRequest
   readonly headers: Option.Option<Headers>
-}): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+}): Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* beginHardcover() {
     const { env, origin, request } = options
     const { challenge, verifier } = yield* pkce
@@ -69,9 +69,11 @@ const toHardcover = (options: {
 /**
  * `GET /authorize`: the consent page, or straight to Hardcover when consent is remembered.
  * @param {AuthorizeRequest} options The request.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The response.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient>} The response.
  */
-const showConsent = (options: AuthorizeRequest): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+const showConsent = (
+  options: AuthorizeRequest,
+): Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* consentOrSkip() {
     const { env, origin, req } = options
     const oauth = env.OAUTH_PROVIDER
@@ -91,13 +93,13 @@ const showConsent = (options: AuthorizeRequest): Effect.Effect<Response, Hardcov
  * @param {AuthorizeRequest} options The request.
  * @param {string} handle The consent handle.
  * @param {URLSearchParams} form The submitted form.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The redirect to Hardcover.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient>} The redirect to Hardcover.
  */
 const approve = (
   options: AuthorizeRequest,
   handle: string,
   form: Readonly<URLSearchParams>,
-): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+): Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* approveConsent() {
     const { env, origin, req } = options
     const scope = normalizeScopes(form.getAll("scope"))
@@ -110,9 +112,11 @@ const approve = (
 /**
  * `POST /authorize`: the consent form's answer. The form posts `application/x-www-form-urlencoded`.
  * @param {AuthorizeRequest} options The request.
- * @returns {Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient>} The redirect to Hardcover, or back to the client when denied.
+ * @returns {Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient>} The redirect to Hardcover, or back to the client when denied.
  */
-const submitConsent = (options: AuthorizeRequest): Effect.Effect<Response, HardcoverOAuthError, Crypto.Crypto | HttpClient.HttpClient> =>
+const submitConsent = (
+  options: AuthorizeRequest,
+): Effect.Effect<Response, HardcoverOAuthError, Digest.Digest | SecureRandom.SecureRandom | HttpClient.HttpClient> =>
   Effect.gen(function* answerConsent() {
     const { env, req } = options
     const form = new URLSearchParams(yield* Effect.promise(() => req.text()))

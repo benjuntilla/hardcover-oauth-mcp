@@ -22,7 +22,7 @@ const NOT_FOUND = 404
  * @param {AuthorizeRequest} request The request.
  * @returns {Effect.Effect} The response.
  */
-const route = (url: URL, request: AuthorizeRequest): ReturnType<typeof callback> => {
+const route = (url: URL, request: AuthorizeRequest): ReturnType<typeof showConsent> => {
   const { method } = request.req
   if (url.pathname === "/authorize" && method === "GET") {
     return showConsent(request)

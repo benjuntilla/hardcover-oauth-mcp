@@ -1,7 +1,6 @@
 // The Markdown pages listed in site/routes.ts, prerendered to static
 // Assets that the Worker serves ahead of its own routes. See alchemy.run.ts.
 import { Array as Arr, Option, Record as Rec, pipe } from "effect"
-import type { MdastVisitorContext } from "satteri"
 import { PAGES } from "#root/site/routes.ts"
 import Slugger from "github-slugger"
 import { defineConfig } from "astro/config"
@@ -25,7 +24,7 @@ const hasScheme = (url: string): boolean => SCHEME_START.test(url) && url.includ
 
 /** Relative links in the Markdown work on GitHub; on the site, links to pages go to their routes and other files link to GitHub. */
 const siteLinks = defineMdastPlugin({
-  link(node, ctx: MdastVisitorContext): undefined {
+  link(node, ctx) {
     if (hasScheme(node.url) || node.url.startsWith(HASH) || node.url.startsWith(ROOT)) {
       return
     }
@@ -40,7 +39,7 @@ const siteLinks = defineMdastPlugin({
  * outline, so the Markdown needs no hand-kept contents list. Slugs come from the same slugger Astro uses for heading ids.
  */
 const tableOfContents = defineMdastPlugin({
-  before(root, ctx: MdastVisitorContext): undefined {
+  before(root, ctx) {
     const marker = Arr.findFirst(root.children, (node) => node.type === "html" && node.value.trim() === TOC_MARKER)
     if (Option.isNone(marker)) {
       return

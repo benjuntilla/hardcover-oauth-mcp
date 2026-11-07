@@ -4,7 +4,7 @@
  * 2025 revisions. Each `HardcoverConnection` Durable Object runs one for its
  * connection, so 2025 sessions live in that object's memory.
  */
-import { Array as Arr, Effect, ErrorReporter, Layer, Logger, Option, Record as Rec, Scheduler, pipe } from "effect"
+import { Array as Arr, Context, Effect, ErrorReporter, Layer, Logger, Option, Record as Rec, Scheduler, pipe } from "effect"
 import { HardcoverToolkit, HardcoverToolkitLive } from "#src/mcp/toolkit.ts"
 import { HttpRouter, HttpServer } from "effect/http"
 import { McpProtocol, McpSchema, McpServer, Toolkit } from "effect/ai"
@@ -119,26 +119,34 @@ const makeMcpHandler = (options: {
   )
   // The handlers layer covers every tool; registration only looks up the ones in this toolkit.
   const toolkit = Toolkit.make(...tools)
-  const app = McpServer.toolkit(toolkit).pipe(
+  const registrations = McpServer.toolkit(toolkit).pipe(
     Layer.provideMerge(HardcoverToolkitLive),
-    Layer.provideMerge(
-      McpServer.layerHttp({
-        allowSessionTermination: true,
-        icons: serverIcons,
-        instructions: SERVER_INFO.instructions,
-        name: SERVER_INFO.name,
-        path: "/mcp",
-        protocols: PROTOCOLS,
-        version: SERVER_INFO.version,
-        websiteUrl: SERVER_INFO.websiteUrl,
-      }),
-    ),
     Layer.provide(Layer.succeed(Session, session)),
+  )
+  // Registrations install when the transport builds, so the session belongs in that layer.
+  // Providing the session to the built handler afterwards no longer reaches the handlers.
+  const transport = Effect.sync(() =>
+    McpServer.layerHttp({
+      allowSessionTermination: true,
+      icons: serverIcons,
+      instructions: SERVER_INFO.instructions,
+      name: SERVER_INFO.name,
+      path: "/mcp",
+      protocols: PROTOCOLS,
+      registrations,
+      version: SERVER_INFO.version,
+      websiteUrl: SERVER_INFO.websiteUrl,
+    }),
+  )
+  const app = Layer.unwrap(transport).pipe(
     Layer.provide(HttpServer.layerServices),
     Layer.provide(ReportDefects),
     Layer.provideMerge(SyncScheduler),
   )
-  return HttpRouter.toWebHandler(app, { disableLogger: true })
+  const web = HttpRouter.toWebHandler(app, { disableLogger: true })
+  // Satisfies Effect 4.1's request-context parameter. The request fiber's services win on a clash.
+  const context = Context.make(Session, session)
+  return { dispose: web.dispose, handler: (request) => web.handler(request, context) }
 }
 
 type McpHandler = ReturnType<typeof makeMcpHandler>

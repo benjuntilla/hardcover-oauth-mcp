@@ -1,9 +1,14 @@
 /**
- * The Effect services this Worker runs with: Effect's fetch client and Web Crypto. One runtime per
- * isolate serves the Worker's handlers, the Durable Object, and the GraphQL executors.
+ * The Effect services this Worker runs with: Effect's fetch client, and Web Crypto for PKCE and
+ * connection ids. One runtime per isolate serves the Worker's handlers, the Durable Object, and the
+ * GraphQL executors.
  */
-import { Crypto, Effect, Layer, ManagedRuntime, Tracer } from "effect"
+import { Digest, SecureRandom } from "effect/crypto"
+import { Effect, Layer, ManagedRuntime, Tracer } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/http"
+
+/** Services the OAuth flow needs from Web Crypto: a PKCE verifier and a connection id. */
+type PlatformCrypto = Digest.Digest | SecureRandom.SecureRandom
 
 /**
  * Sends each request with the `fetch` that is current, as a plain `fetch()` call would; Effect's
@@ -19,21 +24,11 @@ const Http: Layer.Layer<HttpClient.HttpClient> = Layer.effect(HttpClient.HttpCli
   Effect.service(HttpClient.HttpClient).pipe(Effect.map(withCurrentFetch)),
 ).pipe(Layer.provide(FetchHttpClient.layer), Layer.merge(Layer.succeed(Tracer.DisablePropagation, true)))
 
-/** Effect's `Crypto` on the Web Crypto API that Workers provide. */
-const WebCrypto: Layer.Layer<Crypto.Crypto> = Layer.succeed(
-  Crypto.Crypto,
-  Crypto.make({
-    digest: (algorithm, data) =>
-      Effect.map(
-        Effect.promise(() => crypto.subtle.digest(algorithm, new Uint8Array(data))),
-        (digest) => new Uint8Array(digest),
-      ),
-    randomBytes: (size) => crypto.getRandomValues(new Uint8Array(size)),
-  }),
-)
+/** Effect's digest and secure random on the Web Crypto API that Workers provide. */
+const WebCrypto: Layer.Layer<PlatformCrypto> = Layer.mergeAll(Digest.layerWebCrypto, SecureRandom.layerWebCrypto)
 
 /** The runtime, built on first use. */
-const platform: ManagedRuntime.ManagedRuntime<Crypto.Crypto | HttpClient.HttpClient, never> = ManagedRuntime.make(
+const platform: ManagedRuntime.ManagedRuntime<PlatformCrypto | HttpClient.HttpClient, never> = ManagedRuntime.make(
   Layer.merge(Http, WebCrypto),
 )
 
