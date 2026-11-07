@@ -7,7 +7,7 @@ import { Deployment, publishStack } from "#root/alchemy.run.ts"
 import { Secrets, Stack, localState } from "alchemy"
 import type { Layer } from "effect"
 import { MOCK_URL } from "#test/e2e-config.ts"
-import { providers } from "alchemy/Cloudflare"
+import { providers } from "@alchemy.run/cloudflare"
 
 /** Only the mock's credentials, not `.env`'s, which Bun also loads into the process environment. */
 const credentials: Layer.Layer<never> = ConfigProvider.layer(

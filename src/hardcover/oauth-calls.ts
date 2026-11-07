@@ -5,7 +5,8 @@
  * tokens on each use; replaying a spent refresh token revokes the whole chain.
  * https://docs.hardcover.app/api/oauth/
  */
-import { Array as Arr, Crypto, Effect, Option, pipe } from "effect"
+import { Array as Arr, Effect, Option, pipe } from "effect"
+import { Digest, SecureRandom } from "effect/crypto"
 import type { HardcoverOAuthError, TokenSet } from "#src/hardcover/oauth-types.ts"
 import { discover, postForm, revocationEndpoint, toTokenSet } from "#src/hardcover/oauth-http.ts"
 import { Base64Url } from "effect/encoding"
@@ -132,11 +133,12 @@ const revokeToken = (options: {
   )
 
 /** A PKCE verifier (43 chars of base64url entropy) and its S256 challenge. */
-const pkce: Effect.Effect<PkcePair, never, Crypto.Crypto> = Effect.gen(function* makePkce() {
-  const random = yield* Crypto.Crypto
-  const verifier = Base64Url.encode(yield* Effect.orDie(random.randomBytes(VERIFIER_BYTES)))
-  const digest = yield* Effect.orDie(random.digest("SHA-256", new TextEncoder().encode(verifier)))
-  return { challenge: Base64Url.encode(digest), verifier }
+const pkce: Effect.Effect<PkcePair, never, Digest.Digest | SecureRandom.SecureRandom> = Effect.gen(function* makePkce() {
+  const random = yield* SecureRandom.SecureRandom
+  const digest = yield* Digest.Digest
+  const verifier = Base64Url.encode(yield* random.randomBytes(VERIFIER_BYTES))
+  const hashed = yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))
+  return { challenge: Base64Url.encode(hashed), verifier }
 })
 
 /**

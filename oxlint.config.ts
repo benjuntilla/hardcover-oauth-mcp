@@ -116,7 +116,7 @@ export default defineConfig({
     },
     {
       // The toolkit is the join of every tool module. Splitting it would only move the same imports.
-      files: ["src/mcp/toolkit.ts", "src/mcp/tools/vibes.ts"],
+      files: ["src/mcp/toolkit.ts", "src/mcp/tools/vibes.ts", "src/oauth/callback.ts", "src/oauth/consent.ts"],
       rules: { "eslint/sort-imports": "off", "import/max-dependencies": "off" },
     },
     {
@@ -137,6 +137,11 @@ export default defineConfig({
   ],
   plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node", "jsdoc", "jest", "effecttsgo"],
   rules: {
+    // Effect's unstable modules (platform services, AI, HTTP) are used on purpose.
+    // The effect version is pinned exactly, so their breaking changes arrive only with an upgrade that `mise run check` covers.
+    // A style suggestion whose replacements change behavior (empty splits, negative repeats, regex patterns).
+    // It is off by default; the style category would otherwise turn every new suggestion into an error.
+    "effecttsgo/prefer-effect-string": "off",
     // Effect's unstable modules (platform services, AI, HTTP) are used on purpose.
     // The effect version is pinned exactly, so their breaking changes arrive only with an upgrade that `mise run check` covers.
     "effecttsgo/unstable-api-usage": "off",

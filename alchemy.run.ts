@@ -1,10 +1,10 @@
 import { AlchemyContext, Stack, Stage, localState } from "alchemy"
 import { Array as Arr, Config, Context, Effect, Hash, Layer, Number, Option, Record as Rec, Struct, pipe } from "effect"
-import { Worker as CloudflareWorker, DurableObject, RateLimit, providers, state } from "alchemy/Cloudflare"
+import { Worker as CloudflareWorker, DurableObject, RateLimit, providers, state } from "@alchemy.run/cloudflare"
 import { Build } from "alchemy/Command"
 import type { HardcoverConnection as HardcoverConnectionClass } from "#src/connection/durable-object.ts"
-import type { InferEnv } from "alchemy/Cloudflare"
-import { Namespace as KVNamespace } from "alchemy/Cloudflare/KV"
+import type { InferEnv } from "@alchemy.run/cloudflare"
+import { Namespace as KVNamespace } from "@alchemy.run/cloudflare/KV"
 import { PAGES } from "#root/site/routes.ts"
 
 /** Who may connect to a deployment, where it's served, and which Hardcover it talks to. */
