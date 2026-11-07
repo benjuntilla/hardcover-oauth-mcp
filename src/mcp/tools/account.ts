@@ -105,7 +105,7 @@ const CreateImportedBook = hardcoverTool({
   description: "Creates a book from one unmatched import row instead of matching it to an existing one.",
   kind: "create",
   name: "hardcover_create_imported_book",
-  parameters: Schema.Struct({ resultId: Id("collection_import_results id.") }),
+  parameters: Schema.Struct({ resultId: ImportResultId }),
   scopes: ["read:account", "write:library"],
   success: Schema.Struct({ result: Json }),
   title: "Create a book from an import row",

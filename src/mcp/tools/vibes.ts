@@ -57,28 +57,42 @@ const signalId = (signal: typeof Signal.Type): Effect.Effect<number, HardcoverEr
   return Effect.succeed(Number(signal.value))
 }
 
-const idSignal = (signal: typeof Signal.Type, id: number): VibeSignal => {
-  if (signal.type === "book" || signal.type === "author" || signal.type === "user") {
-    return { id, type: signal.type, weight: signal.weight }
+type IdSignal = typeof Signal.Type & { readonly type: "book" | "author" | "user" }
+
+const idSignal = (signal: IdSignal, id: number): VibeSignal => ({ id, type: signal.type, weight: signal.weight })
+
+const isIdSignal = (signal: typeof Signal.Type): signal is IdSignal =>
+  signal.type === "book" || signal.type === "author" || signal.type === "user"
+
+const namedSignal = (signal: Exclude<typeof Signal.Type, IdSignal>, value: string): VibeSignal => {
+  if (signal.type === "genre") {
+    return { type: "genre", value, weight: signal.weight }
   }
-  return { type: "popularity", weight: signal.weight }
+  if (signal.type === "axiom") {
+    return { type: "axiom", value, weight: signal.weight }
+  }
+  if (signal.type === "audience") {
+    return { type: "audience", value, weight: signal.weight }
+  }
+  if (signal.type === "format") {
+    return { type: "format", value, weight: signal.weight }
+  }
+  return { type: "series", value, weight: signal.weight }
 }
 
-const textSignal = (signal: typeof Signal.Type): VibeSignal => {
+const textSignal = (signal: Exclude<typeof Signal.Type, IdSignal>): VibeSignal => {
+  const value = signal.value ?? ""
   if (signal.type === "semantic") {
-    return { text: signal.value ?? "", type: "semantic", weight: signal.weight }
+    return { text: value, type: "semantic", weight: signal.weight }
   }
   if (signal.type === "popularity") {
     return { type: "popularity", weight: signal.weight }
   }
-  if (signal.type === "book" || signal.type === "author" || signal.type === "user") {
-    return { id: Number(signal.value), type: signal.type, weight: signal.weight }
-  }
-  return { type: signal.type, value: signal.value ?? "", weight: signal.weight }
+  return namedSignal(signal, value)
 }
 
 const vibeSignal = (signal: typeof Signal.Type): Effect.Effect<VibeSignal, HardcoverError> => {
-  if (signal.type === "book" || signal.type === "author" || signal.type === "user") {
+  if (isIdSignal(signal)) {
     return Effect.map(signalId(signal), (id) => idSignal(signal, id))
   }
   return Effect.succeed(textSignal(signal))

@@ -41,6 +41,17 @@ const unnamedRows = (rows: ReadonlyArray<ListBookRow>, named: ReadonlySet<number
     Arr.filter((id) => !named.has(id)),
   )
 
+const orderedRows = (
+  bookIds: ReadonlyArray<number>,
+  listBooks: ReadonlyArray<ListBookRow>,
+  byBook: ReadonlyMap<number, number>,
+): { readonly ids: ReadonlyArray<number>; readonly order: ReadonlyArray<{ readonly bookId: number; readonly position: number }> } => {
+  const unique = Arr.dedupe(bookIds)
+  const rowIds = pipe(unique, Arr.flatMap(rowId(byBook)))
+  // The SDK's reorder wants every row. Keep books the caller didn't name at the end.
+  return { ids: Arr.appendAll(rowIds, unnamedRows(listBooks, new Set(rowIds))), order: pipe(unique, Arr.map(placed)) }
+}
+
 const listOrder = Effect.fn(function* listOrder(params: typeof ReorderList.parametersSchema.Type) {
   const list = yield* call((hardcover) => hardcover.client.lists.get(params.listId, { limit: REORDER_PAGE }))
   if (Predicate.isNull(list)) {
@@ -62,10 +73,7 @@ const listOrder = Effect.fn(function* listOrder(params: typeof ReorderList.param
       message: `Not on the list: ${pipe(missing, Arr.map(bookLabel), Arr.join(MISSING_SEPARATOR))}.`,
     })
   }
-  const rowIds = pipe(params.bookIds, Arr.flatMap(rowId(byBook)))
-  // The SDK's reorder wants every row. Keep books the caller didn't name at the end.
-  const ids = Arr.appendAll(rowIds, unnamedRows(list.listBooks, new Set(rowIds)))
-  return { ids, order: pipe(params.bookIds, Arr.map(placed)) }
+  return orderedRows(params.bookIds, list.listBooks, byBook)
 })
 
 const listHandlers = {

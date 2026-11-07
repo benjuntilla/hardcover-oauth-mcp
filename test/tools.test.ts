@@ -95,16 +95,21 @@ const trendingRows = Effect.gen(function* trendingRows() {
   expect(result.structuredContent?.books).toEqual([{ id: 100, slug: "dune", title: "Dune" }])
 })
 
+const NAMED_ROW = 32
+const UNNAMED_ROW = 31
+const FIRST_POSITION = 0
+const FOLLOWING_POSITION = 1
+
+const rowPosition = (rowId: number, position: number): string => `id: ${rowId} }, _set: { position: ${position} }`
+
 const reorder = Effect.gen(function* reorder() {
   const result = yield* callTool("hardcover_reorder_list", { bookIds: [SEQUEL_ID], listId: 3 })
   expect(result.structuredContent?.order).toEqual([{ bookId: SEQUEL_ID, position: 1 }])
   const updates = yield* sent("SetListPositions")
   expect(updates.length).toBeGreaterThan(NO_CALLS)
   const document = updates[NO_CALLS]?.query ?? ""
-  expect(document).toContain("id: 32")
-  expect(document).toContain("position: 0")
-  expect(document).toContain("id: 31")
-  expect(document).toContain("position: 1")
+  expect(document).toContain(rowPosition(NAMED_ROW, FIRST_POSITION))
+  expect(document).toContain(rowPosition(UNNAMED_ROW, FOLLOWING_POSITION))
 })
 
 const FoundOperations = Schema.Struct({ operations: Schema.Array(Schema.Struct({ kind: Schema.String, name: Schema.String })) })

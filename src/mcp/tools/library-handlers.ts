@@ -106,7 +106,8 @@ const rateBook = Effect.fn(function* rateLibraryBook(params: typeof RateBook.par
 
 const writeReview = Effect.fn(function* writeBookReview(params: typeof WriteReview.parametersSchema.Type) {
   const existing = yield* entryFor(params.bookId)
-  const review = defined({ hasSpoilers: params.hasSpoilers, markdown: params.review, reviewedAt: params.reviewedAt })
+  const reviewedAt = params.reviewedAt ?? DateTime.formatIsoDateUtc(yield* DateTime.now)
+  const review = defined({ hasSpoilers: params.hasSpoilers, markdown: params.review, reviewedAt })
   const patch = defined({ rating: params.rating, review, status: UserBookStatus.Read })
   const entry = Predicate.isNull(existing)
     ? yield* call((hardcover) => hardcover.client.library.add(params.bookId, patch))
@@ -143,10 +144,23 @@ const updateLibraryEntry = Effect.fn(function* editLibraryEntry(params: typeof U
     recommendedFor: params.recommendedFor,
     startDate: params.firstStartedReadingDate,
   })
-  if (isBlank(patch)) {
+  const dates = defined({ date_added: params.dateAdded, last_read_date: params.lastReadDate })
+  if (isBlank(patch) && isBlank(dates)) {
     return yield* HardcoverError.make({ kind: "invalid", message: "Nothing to change." })
   }
-  return { entry: yield* call((hardcover) => hardcover.client.library.update(existing.id, patch)) }
+  if (!isBlank(patch)) {
+    yield* call((hardcover) => hardcover.client.library.update(existing.id, patch))
+  }
+  if (!isBlank(dates)) {
+    // The SDK update has no date-added or last-read field, so those go through the mutation.
+    yield* call((hardcover) =>
+      hardcover.client.graphql(
+        "mutation UpdateEntryDates($id: Int!, $object: UserBookUpdateInput!) { update_user_book(id: $id, object: $object) { id } }",
+        { id: existing.id, object: dates },
+      ),
+    )
+  }
+  return { entry: yield* entryFor(params.bookId) }
 })
 
 const removeFromLibrary = Effect.fn(function* deleteLibraryEntry(params: typeof RemoveFromLibrary.parametersSchema.Type) {
