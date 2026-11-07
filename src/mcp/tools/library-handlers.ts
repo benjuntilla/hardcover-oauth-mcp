@@ -1,4 +1,4 @@
-/** Handlers for the library tools. */
+/** Handlers for the library tools, through the SDK's library and reads resources. */
 import type {
   AddRead,
   DeleteRead,
@@ -16,234 +16,286 @@ import type {
   UpdateRead,
   WriteReview,
 } from "./library-tools.ts"
-import { Array as Arr, Effect, Option, Predicate, Record as Rec, Schema, Struct, pipe } from "effect"
-import type { EntryEdit, EntryOrderBy, ReadChanges } from "./library-operations.ts"
-import { STATUS_IDS, payload, privacyId } from "./common.ts"
-import {
-  currentlyReadingRows,
-  deleteUserBook,
-  deleteUserBookRead,
-  libraryRows,
-  libraryRowsByStatus,
-  reviewRows,
-} from "./library-operations.ts"
-import { findEntry, readById, requireEntry, upsertEntry, writes } from "./library-store.ts"
-import { markFinished, recordProgress } from "./library-progress.ts"
-import type { Entry } from "./library-fields.ts"
+import { Array as Arr, DateTime, Effect, Option, Predicate, Struct, pipe } from "effect"
+import { call, privacySetting, readingStatus } from "./common.ts"
+import type { OwnedBook } from "@hardcover/sdk"
+import { UserBookStatus } from "@hardcover/sdk"
+import type { Session } from "#src/mcp/session.ts"
+import { defined, isBlank } from "./sdk-fields.ts"
 import { HardcoverError } from "#src/hardcover/errors.ts"
 import { LibraryToolkit } from "./library-tools.ts"
-import { Session } from "#src/mcp/session.ts"
-import { setEditionOwned } from "./library-owned.ts"
 
 const DEFAULT_LIBRARY_LIMIT = 25
-const NO_ROWS = 0
 const DEFAULT_OFFSET = 0
 const DEFAULT_REVIEW_LIMIT = 10
 const EMPTY_REVIEW = ""
-
-const LIBRARY_SORT = {
-  added: { date_added: "desc_nulls_last" },
-  last_read: { last_read_date: "desc_nulls_last" },
-  rating: { rating: "desc_nulls_last" },
-  title: { book: { title: "asc" } },
-  updated: { updated_at: "desc_nulls_last" },
-} as const
-
-const NEWEST_ID_FIRST: EntryOrderBy = { id: "desc" }
-
 const EMPTY_REVIEW_SLATE = { document: { children: [], object: "document" } }
-
-type LibrarySort = keyof typeof LIBRARY_SORT
-
-const sortOf = (sort: LibrarySort | undefined): LibrarySort => sort ?? "updated"
-
-const privacySetting = (privacy: "followers" | "private" | "public" | undefined): number | undefined =>
-  Predicate.isUndefined(privacy) ? Option.getOrUndefined(Option.none()) : privacyId(privacy)
+const CURRENTLY_READING_LIMIT = 100
+const ONE_UNIT = 1
+const OWNED_PAGE = 100
+const START = 0
 
 const listLibrary = Effect.fn(function* listLibraryBooks(params: typeof ListLibrary.parametersSchema.Type) {
-  const { hcUserId } = yield* Session
-  const { status } = params
-  const page = {
-    limit: params.limit ?? DEFAULT_LIBRARY_LIMIT,
-    offset: params.offset ?? DEFAULT_OFFSET,
-    orderBy: [LIBRARY_SORT[sortOf(params.sort)], NEWEST_ID_FIRST],
-    userId: hcUserId,
-  }
-  const data = yield* Predicate.isUndefined(status)
-    ? libraryRows(page)
-    : libraryRowsByStatus(Struct.assign(page, { statusId: STATUS_IDS[status] }))
-  return { books: pipe(data.user_books, Arr.map(writes.named)), total: data.user_books_aggregate.aggregate?.count ?? NO_ROWS }
+  const listed = { limit: params.limit ?? DEFAULT_LIBRARY_LIMIT, offset: params.offset ?? DEFAULT_OFFSET }
+  const page = yield* call((hardcover) =>
+    hardcover.client.library.list(
+      Predicate.isUndefined(params.status) ? listed : Struct.assign(listed, { status: readingStatus(params.status) }),
+    ),
+  )
+  const total = yield* call((hardcover) =>
+    hardcover.client.library.count(Predicate.isUndefined(params.status) ? {} : { status: readingStatus(params.status) }),
+  )
+  return { books: page.items, total }
 })
 
 const currentlyReading = Effect.fn(function* listCurrentlyReading() {
-  const session = yield* Session
-  const data = yield* currentlyReadingRows({ userId: session.hcUserId })
-  return { books: data.user_books }
+  const page = yield* call((hardcover) =>
+    hardcover.client.library.list({ limit: CURRENTLY_READING_LIMIT, status: UserBookStatus.CurrentlyReading }),
+  )
+  return { books: page.items }
 })
+
+const REVIEWS_QUERY = `query Reviews($userId: Int!, $limit: Int!, $offset: Int!) {
+  user_books(where: {user_id: {_eq: $userId}, has_review: {_eq: true}}, order_by: {updated_at: desc}, limit: $limit, offset: $offset) {
+    id book_id rating review review_has_spoilers reviewed_at status_id
+  }
+}`
 
 const listReviews = Effect.fn(function* listReviewedBooks(params: typeof ListReviews.parametersSchema.Type) {
-  const session = yield* Session
-  const data = yield* reviewRows({
-    limit: params.limit ?? DEFAULT_REVIEW_LIMIT,
-    offset: params.offset ?? DEFAULT_OFFSET,
-    userId: session.hcUserId,
-  })
-  return { reviews: data.user_books }
+  const page = yield* call((hardcover) =>
+    hardcover.client.graphql<{ user_books: ReadonlyArray<unknown> }>(REVIEWS_QUERY, {
+      limit: params.limit ?? DEFAULT_REVIEW_LIMIT,
+      offset: params.offset ?? DEFAULT_OFFSET,
+      userId: hardcover.userId,
+    }),
+  )
+  return { reviews: page.user_books }
 })
 
+const entryFor = (bookId: number) => call((hardcover) => hardcover.client.library.forBook(bookId))
+
+const requireEntry = (bookId: number) =>
+  Effect.map(
+    Effect.filterOrElse(entryFor(bookId), Predicate.isNotNull, () =>
+      HardcoverError.make({ kind: "not_found", message: `Book ${bookId} is not in your library.` }),
+    ),
+    (entry) => entry,
+  )
+
 const getEntry = Effect.fn(function* getLibraryEntry(params: typeof GetEntry.parametersSchema.Type) {
-  const entry = yield* findEntry(params.bookId)
-  return { entry: writes.named(Option.getOrNull(entry)) }
+  return { entry: yield* entryFor(params.bookId) }
 })
 
 const setStatus = Effect.fn(function* setReadingStatus(params: typeof SetStatus.parametersSchema.Type) {
-  return yield* upsertEntry({
-    bookId: params.bookId,
-    object: {
-      edition_id: params.editionId,
-      privacy_setting_id: privacySetting(params.privacy),
-      status_id: STATUS_IDS[params.status],
-    },
-    onInsert: {},
-  })
+  const existing = yield* entryFor(params.bookId)
+  const patch = defined({ editionId: params.editionId, privacy: privacySetting(params.privacy), status: readingStatus(params.status) })
+  const entry = Predicate.isNull(existing)
+    ? yield* call((hardcover) => hardcover.client.library.add(params.bookId, patch))
+    : yield* call((hardcover) => hardcover.client.library.update(existing.id, patch))
+  return { added: Predicate.isNull(existing), entry }
 })
 
 const rateBook = Effect.fn(function* rateLibraryBook(params: typeof RateBook.parametersSchema.Type) {
-  return yield* upsertEntry({
-    bookId: params.bookId,
-    object: { rating: params.rating },
-    onInsert: { status_id: STATUS_IDS.read },
-  })
+  const existing = yield* entryFor(params.bookId)
+  const entry = Predicate.isNull(existing)
+    ? yield* call((hardcover) => hardcover.client.library.add(params.bookId, { rating: params.rating, status: UserBookStatus.Read }))
+    : yield* call((hardcover) => hardcover.client.library.rate(existing.id, params.rating))
+  return { added: Predicate.isNull(existing), entry }
 })
 
 const writeReview = Effect.fn(function* writeBookReview(params: typeof WriteReview.parametersSchema.Type) {
-  const reviewedAt = params.reviewedAt ?? (yield* writes.today())
-  return yield* upsertEntry({
-    bookId: params.bookId,
-    object: {
-      rating: params.rating,
-      review_has_spoilers: params.hasSpoilers ?? false,
-      review_markdown: params.review,
-      reviewed_at: reviewedAt,
-    },
-    onInsert: { status_id: STATUS_IDS.read },
-  })
+  const existing = yield* entryFor(params.bookId)
+  const reviewedAt = params.reviewedAt ?? DateTime.formatIsoDateUtc(yield* DateTime.now)
+  const review = defined({ hasSpoilers: params.hasSpoilers, markdown: params.review, reviewedAt })
+  const patch = defined({ rating: params.rating, review, status: UserBookStatus.Read })
+  const entry = Predicate.isNull(existing)
+    ? yield* call((hardcover) => hardcover.client.library.add(params.bookId, patch))
+    : yield* call((hardcover) => hardcover.client.library.update(existing.id, patch))
+  return { added: Predicate.isNull(existing), entry }
 })
-
-const clearedReview = (entry: unknown): Effect.Effect<unknown, HardcoverError> => {
-  const decoded = Schema.decodeUnknownOption(Schema.Struct({ has_review: Schema.optionalKey(Schema.Boolean) }))(entry)
-  const kept = Option.exists(decoded, (row) => row.has_review === true)
-  if (kept) {
-    return HardcoverError.make({ kind: "unavailable", message: "Hardcover kept the review; it could not be cleared through the API." })
-  }
-  return Effect.succeed(writes.named(entry))
-}
 
 const deleteReview = Effect.fn(function* clearBookReview(params: typeof DeleteReview.parametersSchema.Type) {
-  const entry = yield* requireEntry(params.bookId)
+  const existing = yield* requireEntry(params.bookId)
   // Hardcover ignores nulls here and derives the review from review_slate, so send an empty document.
-  const result = yield* writes.updateEntry(entry.id, {
-    review_has_spoilers: false,
-    review_markdown: EMPTY_REVIEW,
-    review_slate: EMPTY_REVIEW_SLATE,
-  })
-  return { entry: yield* clearedReview(result.user_book) }
-})
-
-const entryChanges = (params: typeof UpdateEntry.parametersSchema.Type): EntryEdit => ({
-  date_added: params.dateAdded,
-  edition_id: params.editionId,
-  first_started_reading_date: params.firstStartedReadingDate,
-  last_read_date: params.lastReadDate,
-  privacy_setting_id: privacySetting(params.privacy),
-  private_notes: params.privateNotes,
-  read_count: params.readCount,
-  recommended_by: params.recommendedBy,
-  recommended_for: params.recommendedFor,
+  const cleared = yield* call((hardcover) =>
+    hardcover.client.graphql<{ update_user_book: { user_book: { has_review: boolean } | null } | null }>(
+      "mutation ClearReview($id: Int!, $object: UserBookUpdateInput!) { update_user_book(id: $id, object: $object) { user_book { has_review } } }",
+      { id: existing.id, object: { review_has_spoilers: false, review_markdown: EMPTY_REVIEW, review_slate: EMPTY_REVIEW_SLATE } },
+    ),
+  )
+  if (cleared.update_user_book?.user_book?.has_review === true) {
+    return yield* HardcoverError.make({
+      kind: "unavailable",
+      message: "Hardcover kept the review; it could not be cleared through the API.",
+    })
+  }
+  return { entry: yield* entryFor(params.bookId) }
 })
 
 const updateLibraryEntry = Effect.fn(function* editLibraryEntry(params: typeof UpdateEntry.parametersSchema.Type) {
-  const entry = yield* requireEntry(params.bookId)
-  const object = entryChanges(params)
-  if (Arr.every(Rec.values<string, unknown>(object), Predicate.isUndefined)) {
+  const existing = yield* requireEntry(params.bookId)
+  const patch = defined({
+    editionId: params.editionId,
+    notes: params.privateNotes,
+    privacy: privacySetting(params.privacy),
+    readCount: params.readCount,
+    recommendedBy: params.recommendedBy,
+    recommendedFor: params.recommendedFor,
+    startDate: params.firstStartedReadingDate,
+  })
+  const dates = defined({ date_added: params.dateAdded, last_read_date: params.lastReadDate })
+  if (isBlank(patch) && isBlank(dates)) {
     return yield* HardcoverError.make({ kind: "invalid", message: "Nothing to change." })
   }
-  const updated = yield* writes.updateEntry(entry.id, object)
-  return { entry: writes.named(updated.user_book) }
+  if (!isBlank(patch)) {
+    yield* call((hardcover) => hardcover.client.library.update(existing.id, patch))
+  }
+  if (!isBlank(dates)) {
+    // The SDK update has no date-added or last-read field, so those go through the mutation.
+    yield* call((hardcover) =>
+      hardcover.client.graphql(
+        "mutation UpdateEntryDates($id: Int!, $object: UserBookUpdateInput!) { update_user_book(id: $id, object: $object) { id } }",
+        { id: existing.id, object: dates },
+      ),
+    )
+  }
+  return { entry: yield* entryFor(params.bookId) }
 })
 
 const removeFromLibrary = Effect.fn(function* deleteLibraryEntry(params: typeof RemoveFromLibrary.parametersSchema.Type) {
-  const entry = yield* requireEntry(params.bookId)
-  const data = yield* deleteUserBook({ id: entry.id })
-  const deleted = data.delete_user_book
-  if (Predicate.isNull(deleted) || Predicate.isNull(deleted.id)) {
-    return yield* HardcoverError.make({ kind: "unavailable", message: "Hardcover did not confirm the removal." })
-  }
-  return { removed: true, userBookId: entry.id }
+  const existing = yield* requireEntry(params.bookId)
+  yield* call((hardcover) => hardcover.client.library.remove(existing.id))
+  return { removed: true, userBookId: existing.id }
 })
+
+const readingEntry = (bookId: number, editionId: number | undefined) =>
+  Effect.gen(function* ensureReading() {
+    const existing = yield* entryFor(bookId)
+    const created = Predicate.isNull(existing)
+      ? yield* call((hardcover) => hardcover.client.library.add(bookId, defined({ editionId, status: UserBookStatus.CurrentlyReading })))
+      : existing
+    if (Predicate.isNotNull(existing) && existing.statusId !== UserBookStatus.CurrentlyReading) {
+      yield* call((hardcover) => hardcover.client.library.setStatus(existing.id, UserBookStatus.CurrentlyReading))
+    }
+    const entry =
+      Predicate.isNotNull(existing) && Predicate.isNotUndefined(editionId)
+        ? yield* call((hardcover) => hardcover.client.library.update(existing.id, { editionId }))
+        : created
+    if (Predicate.isNull(entry)) {
+      return yield* HardcoverError.make({ kind: "unavailable", message: "Hardcover did not return the library entry." })
+    }
+    return entry
+  })
+
+type Progress = { readonly pages: number } | { readonly seconds: number } | { readonly percent: number }
+
+const progressOf = (params: typeof UpdateProgress.parametersSchema.Type): Progress => {
+  const byPages = Option.fromNullishOr(params.page).pipe(Option.map((pages) => ({ pages })))
+  const bySeconds = Option.fromNullishOr(params.seconds).pipe(Option.map((seconds) => ({ seconds })))
+  return Option.getOrElse(
+    Option.orElse(byPages, () => bySeconds),
+    () => ({ percent: params.percent ?? START }),
+  )
+}
 
 const updateProgress = Effect.fn(function* updateReadingProgress(params: typeof UpdateProgress.parametersSchema.Type) {
-  return yield* recordProgress({
-    bookId: params.bookId,
-    editionId: params.editionId,
-    page: params.page,
-    percent: params.percent,
-    seconds: params.seconds,
-    startedAt: params.startedAt,
-  })
-})
-
-const markBookFinished = Effect.fn(function* finishReading(params: typeof MarkFinished.parametersSchema.Type) {
-  return yield* markFinished({ bookId: params.bookId, finishedAt: params.finishedAt, rating: params.rating })
-})
-
-const editionForNewRead = (params: typeof AddRead.parametersSchema.Type, entry: Entry): number | undefined => {
-  if (Predicate.isNotUndefined(params.editionId)) {
-    return params.editionId
+  const units = pipe([params.page, params.percent, params.seconds], Arr.filter(Predicate.isNotUndefined))
+  if (units.length !== ONE_UNIT) {
+    return yield* HardcoverError.make({ kind: "invalid", message: "Pass exactly one of page, percent, or seconds." })
   }
-  return Option.getOrUndefined(Option.fromNullishOr(entry.edition_id))
-}
+  const entry = yield* readingEntry(params.bookId, params.editionId)
+  const read = yield* call((hardcover) => hardcover.client.reads.setProgress(entry.id, progressOf(params)))
+  return { read, status: "currently_reading" }
+})
+
+const markFinished = Effect.fn(function* finishBook(params: typeof MarkFinished.parametersSchema.Type) {
+  const finishedAt = params.finishedAt ?? DateTime.formatIsoDateUtc(yield* DateTime.now)
+  const existing = yield* entryFor(params.bookId)
+  const entry = Predicate.isNull(existing)
+    ? yield* call((hardcover) => hardcover.client.library.add(params.bookId, { status: UserBookStatus.Read }))
+    : yield* call((hardcover) => hardcover.client.library.setStatus(existing.id, UserBookStatus.Read))
+  const reads = yield* call((hardcover) => hardcover.client.reads.list(entry.id))
+  const open = pipe(
+    reads,
+    Arr.findFirst((read) => Predicate.isNull(read.finishedAt)),
+  )
+  const read = Option.isSome(open)
+    ? yield* call((hardcover) => hardcover.client.reads.update(open.value.id, { finishedAt }))
+    : yield* call((hardcover) => hardcover.client.reads.add(entry.id, { finishedAt }))
+  const rated = Predicate.isUndefined(params.rating)
+    ? entry
+    : yield* call((hardcover) => hardcover.client.library.rate(entry.id, params.rating ?? START))
+  return { entry: rated, read }
+})
 
 const addRead = Effect.fn(function* addReadingSession(params: typeof AddRead.parametersSchema.Type) {
   if (Predicate.isUndefined(params.startedAt) && Predicate.isUndefined(params.finishedAt)) {
     return yield* HardcoverError.make({ kind: "invalid", message: "Pass startedAt and/or finishedAt." })
   }
-  const entry = yield* requireEntry(params.bookId)
-  const result = yield* writes.insertRead(entry.id, {
-    edition_id: editionForNewRead(params, entry),
-    finished_at: params.finishedAt,
-    started_at: params.startedAt,
-  })
-  return { read: result.user_book_read }
+  const existing = yield* requireEntry(params.bookId)
+  const read = yield* call((hardcover) =>
+    hardcover.client.reads.add(
+      existing.id,
+      defined({ editionId: params.editionId, finishedAt: params.finishedAt, startedAt: params.startedAt }),
+    ),
+  )
+  return { read }
 })
 
-const readChanges = (params: typeof UpdateRead.parametersSchema.Type): ReadChanges => ({
-  edition_id: params.editionId,
-  finished_at: params.finishedAt,
-  progress_pages: params.page,
-  progress_seconds: params.seconds,
-  started_at: params.startedAt,
-})
-
-const updateReading = Effect.fn(function* editReadingSession(params: typeof UpdateRead.parametersSchema.Type) {
-  const read = yield* readById(params.readId)
-  const changes = readChanges(params)
-  if (Arr.every(Rec.values<string, unknown>(changes), Predicate.isUndefined)) {
+const updateRead = Effect.fn(function* editReadingSession(params: typeof UpdateRead.parametersSchema.Type) {
+  const dates = defined({ editionId: params.editionId, finishedAt: params.finishedAt, startedAt: params.startedAt })
+  const progress = defined({ progress_pages: params.page, progress_seconds: params.seconds })
+  if (isBlank(dates) && isBlank(progress)) {
     return yield* HardcoverError.make({ kind: "invalid", message: "Nothing to change." })
   }
-  const updated = yield* writes.updateRead(read, changes)
-  return { read: updated.user_book_read }
+  if (!isBlank(dates)) {
+    yield* call((hardcover) => hardcover.client.reads.update(params.readId, dates))
+  }
+  if (!isBlank(progress)) {
+    // Reads.update only sends dates. Progress is stored on the read row, so it goes through the mutation directly.
+    yield* call((hardcover) =>
+      hardcover.client.graphql(
+        "mutation UpdateReadProgress($id: Int!, $read: DatesReadInput!) { update_user_book_read(id: $id, object: $read) { id } }",
+        { id: params.readId, read: progress },
+      ),
+    )
+  }
+  return { read: Struct.assign(Struct.assign({ id: params.readId }, dates), progress) }
 })
 
 const deleteRead = Effect.fn(function* deleteReadingSession(params: typeof DeleteRead.parametersSchema.Type) {
-  yield* readById(params.readId)
-  const data = yield* deleteUserBookRead({ id: params.readId })
-  yield* payload({ field: "delete_user_book_read", value: data.delete_user_book_read })
+  yield* call((hardcover) => hardcover.client.reads.delete(params.readId))
   return { deleted: params.readId }
 })
 
-const setOwned = Effect.fn(function* setEditionOwnership(params: typeof SetOwned.parametersSchema.Type) {
-  return yield* setEditionOwned({ editionId: params.editionId, owned: params.owned })
+const ownedPage = (editionId: number, offset: number): Effect.Effect<Option.Option<OwnedBook>, HardcoverError, Session> =>
+  Effect.gen(function* searchOwned() {
+    const page = yield* call((hardcover) => hardcover.client.library.owned({ limit: OWNED_PAGE, offset }))
+    const found = pipe(
+      page.items,
+      Arr.findFirst((item) => item.edition?.id === editionId),
+    )
+    // A full page is not proof of a last page: the cap is per request, not on the list.
+    if (Option.isSome(found) || page.items.length < page.limit) {
+      return found
+    }
+    return yield* ownedPage(editionId, offset + page.limit)
+  })
+
+const ownedEdition = (editionId: number): Effect.Effect<Option.Option<OwnedBook>, HardcoverError, Session> =>
+  ownedPage(editionId, DEFAULT_OFFSET)
+
+const setOwned = Effect.fn(function* setEditionOwned(params: typeof SetOwned.parametersSchema.Type) {
+  if (params.owned) {
+    const marked = yield* call((hardcover) => hardcover.client.library.markOwned(params.editionId))
+    return { changed: true, listBook: marked, owned: true }
+  }
+  const row = yield* ownedEdition(params.editionId)
+  if (Option.isNone(row) || Predicate.isNull(row.value.bookId)) {
+    return { changed: false, owned: false }
+  }
+  const removed = yield* call((hardcover) => hardcover.client.library.unmarkOwned(row.value.bookId))
+  return { changed: removed, owned: false }
 })
 
 const libraryHandlers = {
@@ -254,14 +306,14 @@ const libraryHandlers = {
   hardcover_get_library_entry: getEntry,
   hardcover_list_library: listLibrary,
   hardcover_list_reviews: listReviews,
-  hardcover_mark_finished: markBookFinished,
+  hardcover_mark_finished: markFinished,
   hardcover_rate_book: rateBook,
   hardcover_remove_from_library: removeFromLibrary,
   hardcover_set_owned: setOwned,
   hardcover_set_status: setStatus,
   hardcover_update_library_entry: updateLibraryEntry,
   hardcover_update_progress: updateProgress,
-  hardcover_update_read: updateReading,
+  hardcover_update_read: updateRead,
   hardcover_write_review: writeReview,
 }
 

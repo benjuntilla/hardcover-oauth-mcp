@@ -3,17 +3,20 @@ import {
   DEFAULT_AUTHOR_BOOKS,
   DEFAULT_EDITIONS,
   DEFAULT_PER_PAGE,
+  DEFAULT_SIMILAR,
   DEFAULT_TRENDING,
   MAX_AUTHOR_BOOKS,
   MAX_EDITIONS,
   MAX_PER_PAGE,
+  MAX_SIMILAR,
   MAX_TRENDING,
   MIN_PAGE,
 } from "./catalog-fields.ts"
 import { Id, Json, JsonList, Limit, Offset } from "./common.ts"
-import { SEARCH_TYPES } from "./catalog-search.ts"
 import { Schema } from "effect"
 import { hardcoverTool } from "#src/mcp/define.ts"
+
+const SEARCH_TYPES = ["book", "author", "series", "list", "prompt", "user", "character", "publisher"] as const
 
 const TRENDING_PERIODS = ["week", "month", "three_month", "one_year", "all"] as const
 const SearchType = Schema.Literals(SEARCH_TYPES).annotate({ description: "What to search (default book)." })
@@ -104,6 +107,27 @@ const GetSeries = hardcoverTool({
   title: "Get a series",
 })
 
+const Similar = hardcoverTool({
+  description:
+    "Books similar to one book, most similar first, the same list Hardcover shows on the book page. " +
+    "built is false until Hardcover has generated that list, so an empty page then means not built yet, not no matches.",
+  kind: "read",
+  name: "hardcover_similar_books",
+  parameters: Schema.Struct({
+    bookId: BookId,
+    limit: Limit({ fallback: DEFAULT_SIMILAR, max: MAX_SIMILAR }),
+    offset: Offset,
+  }),
+  scopes: ["read:catalog"],
+  success: Schema.Struct({
+    books: JsonList,
+    built: Schema.Boolean,
+    hasMore: Schema.Boolean,
+    updatedAt: Schema.NullOr(Schema.String),
+  }),
+  title: "Similar books",
+})
+
 const Trending = hardcoverTool({
   description: "Books trending on Hardcover over a period. Costs two requests of the Hardcover rate limit.",
   kind: "read",
@@ -121,4 +145,4 @@ const Trending = hardcoverTool({
  * Application module, not a public API.
  * @internal
  */
-export { GetAuthor, GetBook, GetEditions, GetSeries, Search, Trending }
+export { GetAuthor, GetBook, GetEditions, GetSeries, Search, Similar, Trending }

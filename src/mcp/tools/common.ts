@@ -1,17 +1,19 @@
 /** Shared parameter schemas and helpers for the Hardcover tools. */
-import { Array as Arr, Effect, Option, Predicate, Record as Rec, Schema, String as Str, Struct, pipe } from "effect"
+import { Array as Arr, Effect, Option, Predicate, Schema, String as Str, Struct, pipe } from "effect"
+import { GoalMetric, JournalEvent, PrivacySetting, UserBookStatus } from "@hardcover/sdk"
 import type { GraphQL } from "effect/graphql"
+import type { Hardcover } from "#src/hardcover/sdk.ts"
 import { HardcoverError } from "#src/hardcover/errors.ts"
 import { Session } from "#src/mcp/session.ts"
+import { sdk } from "#src/hardcover/sdk.ts"
 
 const MIN_ID = 1
 const MIN_LIMIT = 1
 const MIN_OFFSET = 0
 const PRIVACY_IDS = { followers: 2, private: 3, public: 1 } as const
-const STATUS_IDS = { currently_reading: 2, did_not_finish: 5, ignored: 6, paused: 4, read: 3, want_to_read: 1 } as const
 
 type PrivacyName = keyof typeof PRIVACY_IDS
-type StatusName = keyof typeof STATUS_IDS
+type StatusName = "want_to_read" | "currently_reading" | "read" | "paused" | "did_not_finish" | "ignored"
 
 /**
  * A positive integer id.
@@ -50,22 +52,51 @@ const Privacy = Schema.Literals(["public", "followers", "private"]).annotate({
   description: "Who can see it: public, followers (people who follow you), or private. Omit to use Hardcover's default.",
 })
 
+const PRIVACY_SETTING: Readonly<Record<PrivacyName, PrivacySetting>> = {
+  followers: PrivacySetting.Follows,
+  private: PrivacySetting.Private,
+  public: PrivacySetting.Public,
+}
+
+const STATUS_SETTING: Readonly<Record<StatusName, UserBookStatus>> = {
+  currently_reading: UserBookStatus.CurrentlyReading,
+  did_not_finish: UserBookStatus.DidNotFinish,
+  ignored: UserBookStatus.Ignored,
+  paused: UserBookStatus.Paused,
+  read: UserBookStatus.Read,
+  want_to_read: UserBookStatus.WantToRead,
+}
+
+const JOURNAL_EVENT: Readonly<Record<"note" | "quote", JournalEvent>> = {
+  note: JournalEvent.Note,
+  quote: JournalEvent.Quote,
+}
+
+const GOAL_METRIC: Readonly<Record<"book" | "page", GoalMetric>> = {
+  book: GoalMetric.Book,
+  page: GoalMetric.Page,
+}
+
 /**
- * Hardcover's id for a privacy setting.
- * @param {PrivacyName} privacy The privacy name.
- * @returns {number} 1 public, 2 followers only, 3 private.
+ * The SDK privacy setting, or none when the caller left Hardcover's default.
+ * @param {PrivacyName | undefined} privacy The privacy the caller asked for.
+ * @returns {PrivacySetting | undefined} The setting.
  */
-const privacyId = (privacy: PrivacyName): number => PRIVACY_IDS[privacy]
+const privacySetting = (privacy: PrivacyName | undefined): PrivacySetting | undefined => {
+  const chosen = Predicate.isUndefined(privacy) ? Option.none() : Option.some(PRIVACY_SETTING[privacy])
+  return Option.getOrUndefined(chosen)
+}
+
+/**
+ * The SDK reading status.
+ * @param {StatusName} status The status the caller asked for.
+ * @returns {UserBookStatus} The status.
+ */
+const readingStatus = (status: StatusName): UserBookStatus => STATUS_SETTING[status]
 
 const Status = Schema.Literals(["want_to_read", "currently_reading", "read", "paused", "did_not_finish", "ignored"]).annotate({
   description: "Reading status. ignored hides the book from recommendations.",
 })
-
-const STATUS_NAMES: Readonly<Record<number, StatusName>> = pipe(
-  Rec.toEntries(STATUS_IDS),
-  Arr.map(([name, id]) => [String(id), name] as const),
-  Rec.fromEntries,
-)
 
 /** Any JSON value returned from Hardcover. */
 const Json = Schema.Unknown
@@ -94,10 +125,7 @@ const run =
     Effect.gen(function* runOperation() {
       const session = yield* Session
       const encoded = yield* Schema.encodeEffect(operation.variables)(variables).pipe(Effect.orDie)
-      const data = yield* session.graphql(
-        { operationName: operation.name, query: operation.document, variables: encoded },
-        { mutation: operation.kind === "mutation" },
-      )
+      const data = yield* sdk(() => session.hardcover.client.graphql(operation.document, encoded))
       return yield* Schema.decodeUnknownEffect(operation.result)(data).pipe(
         Effect.catchTag("SchemaError", () => Effect.die(`Hardcover's response to ${operation.name} did not match the expected shape`)),
       )
@@ -154,6 +182,14 @@ const payload = <Value extends Readonly<{ error?: string | null; errors?: Readon
  * @param {string} options.what What was looked up, for the error message.
  * @returns {Effect.Effect} The first row.
  */
+/**
+ * Runs one SDK call for the signed-in connection.
+ * @param {Function} use The call, given the connection's client and user id.
+ * @returns {Effect.Effect} The call's result.
+ */
+const call = <Result>(use: (connection: Hardcover) => Promise<Result>): Effect.Effect<Result, HardcoverError, Session> =>
+  Effect.flatMap(Session, (session) => sdk(() => use(session.hardcover)))
+
 const first = <Row>(options: Readonly<{ rows: ReadonlyArray<Row>; what: string }>): Effect.Effect<Row, HardcoverError> =>
   Option.match(Arr.head(options.rows), {
     onNone: () => HardcoverError.make({ kind: "not_found", message: `No ${options.what} found.` }),
@@ -164,9 +200,22 @@ const first = <Row>(options: Readonly<{ rows: ReadonlyArray<Row>; what: string }
  * Application module, not a public API.
  * @internal
  */
-export { DateString, first, Id, Json, JsonList, Limit, Offset, Payload, payload, Privacy, privacyId, run, Status, STATUS_IDS, STATUS_NAMES }
-/**
- * Application module, not a public API.
- * @internal
- */
-export type { PrivacyName }
+export {
+  DateString,
+  GOAL_METRIC,
+  JOURNAL_EVENT,
+  call,
+  first,
+  Id,
+  Json,
+  JsonList,
+  Limit,
+  Offset,
+  Payload,
+  payload,
+  Privacy,
+  privacySetting,
+  readingStatus,
+  run,
+  Status,
+}

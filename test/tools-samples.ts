@@ -4,6 +4,8 @@ import { JSON_NULL } from "#test/tools-fixtures.ts"
 const DUNE_ID = 100
 const SEQUEL_ID = 101
 const NOTIFICATION_ID = 11
+const PIN_ID = 1
+const IMPORT_RESULT_ID = 1
 
 const SAMPLES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   hardcover_add_journal_entry: { bookId: 100, kind: "quote", tags: [{ category: "Tag", tag: "fear" }], text: "Fear is the mind-killer." },
@@ -11,6 +13,7 @@ const SAMPLES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   hardcover_add_to_list: { bookId: 100, listId: 3 },
   hardcover_catalog_edit: { query: "mutation { book_normalize(id: 100) { id } }" },
   hardcover_create_goal: { conditions: { readingFormatId: 2 }, endDate: "2026-12-31", startDate: "2026-01-01", target: 52 },
+  hardcover_create_imported_book: { resultId: IMPORT_RESULT_ID },
   hardcover_create_list: { name: "Sci-fi", ranked: true },
   hardcover_create_vibe: { signals: [{ type: "genre", value: "mystery", weight: 4 }], title: "Cozy" },
   hardcover_currently_reading: {},
@@ -36,28 +39,35 @@ const SAMPLES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   hardcover_list_library: { limit: 5, sort: "rating", status: "read" },
   hardcover_list_lists: {},
   hardcover_list_notifications: {},
+  hardcover_list_pins: {},
   hardcover_list_reviews: {},
   hardcover_list_vibes: {},
   hardcover_mark_finished: { bookId: 100, rating: 4.5 },
   hardcover_mark_notifications_read: { ids: [NOTIFICATION_ID] },
+  hardcover_match_import: { bookId: DUNE_ID, resultId: IMPORT_RESULT_ID },
   hardcover_me: {},
   hardcover_mutate: { query: "mutation($id: Int!) { update_goal_progress(id: $id) { id errors } }", variables: { id: 4 } },
+  hardcover_pin_item: { pinnableId: 3, pinnableType: "List" },
   hardcover_query: { query: "query { books_by_pk(id: 100) { id title } }" },
   hardcover_rate_book: { bookId: 100, rating: 3.5 },
   hardcover_remove_from_library: { bookId: 100 },
   hardcover_remove_from_list: { bookId: 100, listId: 3 },
   hardcover_reorder_list: { bookIds: [SEQUEL_ID, DUNE_ID], listId: 3 },
+  hardcover_reorder_pins: { pinIds: [PIN_ID] },
   hardcover_search: { query: "dune" },
   hardcover_set_owned: { editionId: 10, owned: true },
   hardcover_set_status: { bookId: 100, privacy: "followers", status: "want_to_read" },
+  hardcover_similar_books: { bookId: 100 },
   hardcover_trending_books: { limit: 5, period: "week" },
   hardcover_unfollow_user: { username: "friend" },
+  hardcover_unpin_item: { pinnableId: 3, pinnableType: "List" },
   hardcover_update_goal: { goalId: 4, target: 60 },
   hardcover_update_journal_entry: { entryId: 9, text: "edited" },
   hardcover_update_library_entry: { bookId: 100, editionId: JSON_NULL, privateNotes: "signed copy" },
   hardcover_update_list: { description: "best of", listId: 3 },
   hardcover_update_progress: { bookId: 100, percent: 50 },
   hardcover_update_read: { page: 120, readId: 5 },
+  hardcover_user_settings: {},
   hardcover_write_review: { bookId: 100, hasSpoilers: false, review: "Great." },
 }
 

@@ -1,162 +1,184 @@
-/** Handlers for the catalog tools. */
-import { Array as Arr, Effect, Option, Order, Predicate, String as Str, Struct, pipe } from "effect"
+/** Handlers for the catalog tools, through the SDK's books, authors, series, and search resources. */
+import { Array as Arr, Effect, Option, Predicate, String as Str, Struct, pipe } from "effect"
 import { CreateVibe, ListVibes, vibeHandlers } from "./vibes.ts"
-import { DEFAULT_AUTHOR_BOOKS, DEFAULT_EDITIONS, DEFAULT_PER_PAGE, DEFAULT_TRENDING, MIN_PAGE } from "./catalog-fields.ts"
-import { GetAuthor, GetBook, GetEditions, GetSeries, Search, Trending } from "./catalog-tools.ts"
-import {
-  authorById,
-  authorBySlug,
-  bookById,
-  bookBySlug,
-  booksByIds,
-  editionsOfBook,
-  editionsWithIsbn,
-  searchHardcover,
-  seriesById,
-  seriesBySlug,
-  trendingIds,
-} from "./catalog-operations.ts"
-import { bookSlug, lookupByIdOrSlug } from "./catalog-lookup.ts"
+import { DEFAULT_AUTHOR_BOOKS, DEFAULT_EDITIONS, DEFAULT_PER_PAGE, DEFAULT_SIMILAR, DEFAULT_TRENDING, MIN_PAGE } from "./catalog-fields.ts"
+import { GetAuthor, GetBook, GetEditions, GetSeries, Search, Similar, Trending } from "./catalog-tools.ts"
 import { HardcoverError } from "#src/hardcover/errors.ts"
-import type { SearchPayload } from "./catalog-search.ts"
-import type { Session } from "#src/mcp/session.ts"
 import { Toolkit } from "effect/ai"
-import { slimSearch } from "./catalog-search.ts"
+import { call } from "./common.ts"
 
-const EMPTY_COUNT = 0
 const FIRST_PAGE = MIN_PAGE
+const FIRST_OFFSET = 0
 const ISBN_SEPARATOR = "-"
-const MISSING_RANK = 0
+const BOOK_URL = "https://hardcover.app/books"
+const EMPTY = ""
 
-interface RankedBook {
-  readonly id: number
-}
+const cleanIsbn = (isbn: string): string => pipe(isbn, Str.replaceAll(ISBN_SEPARATOR, EMPTY), Str.toUpperCase)
 
-const cleanIsbn = (isbn: string): string => pipe(isbn, Str.replaceAll(ISBN_SEPARATOR, ""), Str.toUpperCase)
+const BOTH = 2
+const NONE = 0
 
-const editionsForIsbn = (isbn: string): Effect.Effect<Readonly<{ editions: ReadonlyArray<unknown> }>, HardcoverError, Session> =>
-  Effect.gen(function* editionsByIsbn() {
-    const data = yield* editionsWithIsbn({ isbn: cleanIsbn(isbn) })
-    return { editions: data.editions }
-  })
-
-const editionsForBook = (
-  bookId: number,
-  limit: number,
-  offset: number,
-): Effect.Effect<Readonly<{ editions: ReadonlyArray<unknown> }>, HardcoverError, Session> =>
-  Effect.gen(function* editionsByBook() {
-    const data = yield* editionsOfBook({ bookId, limit, offset })
-    return { editions: data.editions }
-  })
-
-const searchResult = (
-  search: typeof SearchPayload.Type,
-  type: (typeof Search.parametersSchema.Type)["type"],
-): Effect.Effect<typeof Search.successSchema.Type, HardcoverError> => {
-  if (Option.isSome(Option.fromNullishOr(search.error))) {
-    return HardcoverError.make({ kind: "invalid", message: `Search failed: ${search.error}` })
+/**
+ * Requires exactly one of an id or a slug.
+ * @param {number | undefined} id The numeric id.
+ * @param {string | undefined} slug The slug.
+ * @param {string} what What is being looked up.
+ * @returns {Effect.Effect<void, HardcoverError>} Nothing, or why both or neither were passed.
+ */
+const oneOf = (id: number | undefined, slug: string | undefined, what: string): Effect.Effect<void, HardcoverError> => {
+  const given = pipe([id, slug], Arr.filter(Predicate.isNotUndefined))
+  if (given.length === BOTH) {
+    return Effect.fail(HardcoverError.make({ kind: "invalid", message: `Pass ${what} id or slug, not both.` }))
   }
-  const slimmed = slimSearch({ results: search.results, type: type ?? "book" })
-  const base = { hits: slimmed.hits, ids: search.ids ?? [], type: type ?? "book" }
-  return Effect.succeed(Option.isSome(slimmed.found) ? Struct.assign(base, { found: slimmed.found.value }) : base)
+  if (given.length === NONE) {
+    return Effect.fail(HardcoverError.make({ kind: "invalid", message: `Pass a ${what} id or slug.` }))
+  }
+  return Effect.void
 }
 
-const rankOf = (order: ReadonlyMap<number, number>, id: number): number => order.get(id) ?? MISSING_RANK
+interface SearchPage {
+  readonly page: number
+  readonly perPage: number
+}
 
-const byTrendingRank = (order: ReadonlyMap<number, number>): Order.Order<RankedBook> =>
-  Order.mapInput(Order.Number, (book: RankedBook) => rankOf(order, book.id))
+interface SearchAnswer {
+  readonly found: number
+  readonly hits: ReadonlyArray<unknown>
+  readonly ids: ReadonlyArray<number>
+}
 
-const trendingBooks = (ids: ReadonlyArray<number>): Effect.Effect<ReadonlyArray<RankedBook>, HardcoverError, Session> =>
-  Effect.gen(function* loadTrendingBooks() {
-    if (Arr.isReadonlyArrayEmpty(ids)) {
-      return []
-    }
-    const data = yield* booksByIds({ ids })
-    const order = new Map(
-      pipe(
-        ids,
-        Arr.map((id, index) => [id, index] as const),
-      ),
-    )
-    return pipe(data.books, Arr.sortBy(byTrendingRank(order)))
-  })
+type SearchCall = ReturnType<typeof call<SearchAnswer>>
+
+const answered = (results: {
+  readonly found: number
+  readonly hits: ReadonlyArray<unknown>
+  readonly ids: ReadonlyArray<number>
+}): SearchAnswer => ({
+  found: results.found,
+  hits: results.hits,
+  ids: results.ids,
+})
+
+const peopleSearch = (type: string, query: string, options: SearchPage): SearchCall => {
+  if (type === "author") {
+    return call((hardcover) => hardcover.client.search.authors(query, options).then(answered))
+  }
+  if (type === "character") {
+    return call((hardcover) => hardcover.client.search.characters(query, options).then(answered))
+  }
+  if (type === "user") {
+    return call((hardcover) => hardcover.client.search.users(query, options).then(answered))
+  }
+  return call((hardcover) => hardcover.client.search.publishers(query, options).then(answered))
+}
+
+const catalogSearch = (type: string, query: string, options: SearchPage): SearchCall => {
+  if (type === "series") {
+    return call((hardcover) => hardcover.client.search.series(query, options).then(answered))
+  }
+  if (type === "list") {
+    return call((hardcover) => hardcover.client.search.lists(query, options).then(answered))
+  }
+  if (type === "prompt") {
+    return call((hardcover) => hardcover.client.search.prompts(query, options).then(answered))
+  }
+  return call((hardcover) => hardcover.client.search.books(query, options).then(answered))
+}
+
+const searched = (type: string, query: string, options: SearchPage): SearchCall => {
+  const people = type === "author" || type === "character" || type === "user" || type === "publisher"
+  return people ? peopleSearch(type, query, options) : catalogSearch(type, query, options)
+}
+
+const search = Effect.fn(function* searchCatalog(params: typeof Search.parametersSchema.Type) {
+  const type = params.type ?? "book"
+  const options = { page: params.page ?? FIRST_PAGE, perPage: params.perPage ?? DEFAULT_PER_PAGE }
+  const results = yield* searched(type, params.query, options)
+  return { found: results.found, hits: results.hits, ids: results.ids, type }
+})
+
+const getBook = Effect.fn(function* getBookDetails(params: typeof GetBook.parametersSchema.Type) {
+  yield* oneOf(params.id, params.slug, "book")
+  const book = yield* call((hardcover) =>
+    Predicate.isUndefined(params.id) ? hardcover.client.books.getBySlug(params.slug ?? EMPTY) : hardcover.client.books.get(params.id),
+  )
+  if (Predicate.isNull(book)) {
+    return yield* HardcoverError.make({ kind: "not_found", message: "No book found." })
+  }
+  return { book, url: `${BOOK_URL}/${book.slug}` }
+})
+
+const getEditions = Effect.fn(function* getBookEditions(params: typeof GetEditions.parametersSchema.Type) {
+  if (Predicate.isNotUndefined(params.isbn)) {
+    const editions = yield* call((hardcover) => hardcover.client.books.findByIsbn([cleanIsbn(params.isbn ?? EMPTY)]))
+    return { editions }
+  }
+  if (Predicate.isUndefined(params.bookId)) {
+    return yield* HardcoverError.make({ kind: "invalid", message: "Pass bookId or isbn." })
+  }
+  const page = yield* call((hardcover) =>
+    hardcover.client.books.editions(params.bookId ?? NONE, {
+      limit: params.limit ?? DEFAULT_EDITIONS,
+      offset: params.offset ?? FIRST_OFFSET,
+    }),
+  )
+  return { editions: page.items }
+})
+
+const getAuthor = Effect.fn(function* getAuthorDetails(params: typeof GetAuthor.parametersSchema.Type) {
+  yield* oneOf(params.id, params.slug, "author")
+  const author = yield* call((hardcover) =>
+    Predicate.isUndefined(params.id) ? hardcover.client.authors.getBySlug(params.slug ?? EMPTY) : hardcover.client.authors.get(params.id),
+  )
+  if (Predicate.isNull(author)) {
+    return yield* HardcoverError.make({ kind: "not_found", message: "No author found." })
+  }
+  const books = yield* call((hardcover) => hardcover.client.authors.books(author.id, { limit: params.booksLimit ?? DEFAULT_AUTHOR_BOOKS }))
+  return { author: Struct.assign(author, { books: books.items }) }
+})
+
+const getSeries = Effect.fn(function* getSeriesDetails(params: typeof GetSeries.parametersSchema.Type) {
+  yield* oneOf(params.id, params.slug, "series")
+  const series = yield* call((hardcover) =>
+    Predicate.isUndefined(params.id) ? hardcover.client.series.getBySlug(params.slug ?? EMPTY) : hardcover.client.series.get(params.id),
+  )
+  if (Predicate.isNull(series)) {
+    return yield* HardcoverError.make({ kind: "not_found", message: "No series found." })
+  }
+  const books = yield* call((hardcover) => hardcover.client.series.books(series.id))
+  return { series: Struct.assign(series, { books: books.items }) }
+})
+
+const trending = Effect.fn(function* trendingBooks(params: typeof Trending.parametersSchema.Type) {
+  const page = yield* call((hardcover) =>
+    hardcover.client.books.trending({ duration: params.period ?? "month", limit: params.limit ?? DEFAULT_TRENDING }),
+  )
+  return { books: page.items }
+})
+
+const similar = Effect.fn(function* similarBooks(params: typeof Similar.parametersSchema.Type) {
+  const page = yield* call((hardcover) =>
+    hardcover.client.books.similar(params.bookId, { limit: params.limit ?? DEFAULT_SIMILAR, offset: params.offset ?? FIRST_OFFSET }),
+  )
+  return {
+    books: page.items,
+    built: Option.isSome(Option.fromNullishOr(page.updatedAt)),
+    hasMore: page.hasMore,
+    updatedAt: page.updatedAt,
+  }
+})
 
 const catalogHandlers = {
-  hardcover_get_author: Effect.fn(function* getAuthor(params: typeof GetAuthor.parametersSchema.Type) {
-    const limit = params.booksLimit ?? DEFAULT_AUTHOR_BOOKS
-    const author = yield* lookupByIdOrSlug({
-      byId: (id) => authorById({ id, limit }),
-      bySlug: (slug) => authorBySlug({ limit, slug }),
-      idField: "authors_by_pk",
-      missing: "author",
-      params,
-      slugField: "authors",
-      what: "author",
-    })
-    return { author }
-  }),
-
-  hardcover_get_book: Effect.fn(function* getBook(params: typeof GetBook.parametersSchema.Type) {
-    const book = yield* lookupByIdOrSlug({
-      byId: (id) => bookById({ id }),
-      bySlug: (slug) => bookBySlug({ slug }),
-      idField: "books_by_pk",
-      missing: "book",
-      params,
-      slugField: "books",
-      what: "book",
-    })
-    const slug = yield* bookSlug(book)
-    return { book, url: `https://hardcover.app/books/${slug}` }
-  }),
-
-  hardcover_get_editions: Effect.fn(function* getEditions(params: typeof GetEditions.parametersSchema.Type) {
-    const { limit = DEFAULT_EDITIONS, offset = EMPTY_COUNT } = params
-    const isbn = Option.fromNullishOr(params.isbn)
-    if (Option.isSome(isbn)) {
-      return yield* editionsForIsbn(isbn.value)
-    }
-    const bookId = Option.fromNullishOr(params.bookId)
-    if (Option.isNone(bookId)) {
-      return yield* HardcoverError.make({ kind: "invalid", message: "Pass bookId or isbn." })
-    }
-    return yield* editionsForBook(bookId.value, limit, offset)
-  }),
-
-  hardcover_get_series: Effect.fn(function* getSeries(params: typeof GetSeries.parametersSchema.Type) {
-    const series = yield* lookupByIdOrSlug({
-      byId: (id) => seriesById({ id }),
-      bySlug: (slug) => seriesBySlug({ slug }),
-      idField: "series_by_pk",
-      missing: "series",
-      params,
-      slugField: "series",
-      what: "series",
-    })
-    return { series }
-  }),
-
-  hardcover_search: Effect.fn(function* searchCatalog(params: typeof Search.parametersSchema.Type) {
-    const { page = FIRST_PAGE, perPage = DEFAULT_PER_PAGE, query, type = "book" } = params
-    const data = yield* searchHardcover({ page, perPage, query, type })
-    return yield* searchResult(data.search ?? {}, type)
-  }),
-
-  hardcover_trending_books: Effect.fn(function* trendingBooksHandler(params: typeof Trending.parametersSchema.Type) {
-    const { limit = DEFAULT_TRENDING, period = "month" } = params
-    const data = yield* trendingIds({ limit, period })
-    const trending = data.books_trending
-    if (Option.isSome(Option.fromNullishOr(trending?.error))) {
-      return yield* HardcoverError.make({ kind: "unavailable", message: `Trending failed: ${trending?.error}` })
-    }
-    const ids = pipe(trending?.ids ?? [], Arr.filter(Predicate.isNotNull), Arr.take(limit))
-    return { books: yield* trendingBooks(ids) }
-  }),
+  hardcover_get_author: getAuthor,
+  hardcover_get_book: getBook,
+  hardcover_get_editions: getEditions,
+  hardcover_get_series: getSeries,
+  hardcover_search: search,
+  hardcover_similar_books: similar,
+  hardcover_trending_books: trending,
 }
 
-/** Catalog lookups and the user's vibes (recommendation feeds). */
-const DiscoveryToolkit = Toolkit.make(Search, GetBook, GetEditions, GetAuthor, GetSeries, Trending, ListVibes, CreateVibe)
+const DiscoveryToolkit = Toolkit.make(Search, GetBook, GetEditions, GetAuthor, GetSeries, Trending, Similar, ListVibes, CreateVibe)
 const DiscoveryToolkitLive = DiscoveryToolkit.toLayer(Struct.assign(catalogHandlers, vibeHandlers))
 
 /**

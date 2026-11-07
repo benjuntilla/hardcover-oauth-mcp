@@ -10,6 +10,11 @@ import type { FieldNode } from "graphql"
 
 const BEARER_PATTERN = /^Bearer /v
 const ME_FIELD = "me"
+const JSON_NULL = Option.getOrNull(Option.none())
+const NO_BOOKS = 0
+const NO_FOLLOWS = 0
+const PUBLIC_ACCOUNT = 1
+const FOLLOWS_ACTIVITY = 2
 
 interface GraphHandler {
   readonly run: (variables: Readonly<Record<string, unknown>>, query: string) => unknown
@@ -58,7 +63,29 @@ const answered = (answering: Answering, field: FieldNode): readonly [string, unk
   const name = field.name.value
   const key = field.alias?.value ?? name
   if (name === ME_FIELD) {
-    return [key, [answering.user]]
+    return [
+      key,
+      [
+        {
+          accountPrivacySettingId: PUBLIC_ACCOUNT,
+          activityPrivacySettingsId: FOLLOWS_ACTIVITY,
+          admin: false,
+          bio: JSON_NULL,
+          booksCount: NO_BOOKS,
+          cachedCover: JSON_NULL,
+          cachedGenres: JSON_NULL,
+          cachedImage: JSON_NULL,
+          createdAt: "2024-01-01T00:00:00Z",
+          flair: JSON_NULL,
+          followedUsersCount: NO_FOLLOWS,
+          followersCount: NO_FOLLOWS,
+          id: answering.user.id,
+          name: answering.user.name,
+          pro: answering.user.pro,
+          username: answering.user.username,
+        },
+      ],
+    ]
   }
   return [key, answering.handlers[name]?.run(answering.variables, answering.query)]
 }
