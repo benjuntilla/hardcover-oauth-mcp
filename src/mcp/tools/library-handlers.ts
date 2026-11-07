@@ -33,7 +33,6 @@ const EMPTY_REVIEW_SLATE = { document: { children: [], object: "document" } }
 const CURRENTLY_READING_LIMIT = 100
 const ONE_UNIT = 1
 const OWNED_PAGE = 100
-const OWNED_SEARCH_LIMIT = 1000
 const START = 0
 
 const listLibrary = Effect.fn(function* listLibraryBooks(params: typeof ListLibrary.parametersSchema.Type) {
@@ -271,15 +270,13 @@ const deleteRead = Effect.fn(function* deleteReadingSession(params: typeof Delet
 
 const ownedPage = (editionId: number, offset: number): Effect.Effect<Option.Option<OwnedBook>, HardcoverError, Session> =>
   Effect.gen(function* searchOwned() {
-    if (offset >= OWNED_SEARCH_LIMIT) {
-      return Option.none()
-    }
     const page = yield* call((hardcover) => hardcover.client.library.owned({ limit: OWNED_PAGE, offset }))
     const found = pipe(
       page.items,
       Arr.findFirst((item) => item.edition?.id === editionId),
     )
-    if (Option.isSome(found) || !page.hasMore) {
+    // A full page is not proof of a last page: the cap is per request, not on the list.
+    if (Option.isSome(found) || page.items.length < page.limit) {
       return found
     }
     return yield* ownedPage(editionId, offset + page.limit)

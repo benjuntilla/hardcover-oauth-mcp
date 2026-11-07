@@ -11,13 +11,18 @@ const MIN_SIGNAL_WEIGHT = -5
 const MAX_SIGNAL_WEIGHT = 5
 const VIBE_LIST_LIMIT = 100
 
-const Signal = Schema.Struct({
-  type: Schema.Literals(["book", "author", "genre", "axiom", "audience", "format", "series", "semantic", "popularity", "user"]),
-  value: Schema.optionalKey(Schema.String).annotate({
-    description: "For book, author, and user, the numeric id. For the others, the name or text. Popularity has no value.",
-  }),
-  weight: Schema.Int.check(Schema.isBetween({ maximum: MAX_SIGNAL_WEIGHT, minimum: MIN_SIGNAL_WEIGHT })),
+const SignalWeight = Schema.Int.check(Schema.isBetween({ maximum: MAX_SIGNAL_WEIGHT, minimum: MIN_SIGNAL_WEIGHT }))
+const SignalValue = Schema.optionalKey(Schema.String).annotate({
+  description: "For book, author, and user, the numeric id. For the others, the name or text. Popularity has no value.",
 })
+
+const IdKinds = Schema.Literals(["book", "author", "user"])
+const TextKinds = Schema.Literals(["genre", "axiom", "audience", "format", "series", "semantic", "popularity"])
+
+const Signal = Schema.Union([
+  Schema.Struct({ type: IdKinds, value: SignalValue, weight: SignalWeight }),
+  Schema.Struct({ type: TextKinds, value: SignalValue, weight: SignalWeight }),
+])
 
 const ListVibes = hardcoverTool({
   description: "The user's vibes (recommendation feeds) with their current ranked book ids.",
@@ -57,14 +62,15 @@ const signalId = (signal: typeof Signal.Type): Effect.Effect<number, HardcoverEr
   return Effect.succeed(Number(signal.value))
 }
 
-type IdSignal = typeof Signal.Type & { readonly type: "book" | "author" | "user" }
+type IdSignal = Extract<typeof Signal.Type, { readonly type: "book" | "author" | "user" }>
+type TextSignal = Exclude<typeof Signal.Type, IdSignal>
 
 const idSignal = (signal: IdSignal, id: number): VibeSignal => ({ id, type: signal.type, weight: signal.weight })
 
 const isIdSignal = (signal: typeof Signal.Type): signal is IdSignal =>
   signal.type === "book" || signal.type === "author" || signal.type === "user"
 
-const namedSignal = (signal: Exclude<typeof Signal.Type, IdSignal>, value: string): VibeSignal => {
+const namedSignal = (signal: TextSignal, value: string): VibeSignal => {
   if (signal.type === "genre") {
     return { type: "genre", value, weight: signal.weight }
   }
@@ -80,7 +86,7 @@ const namedSignal = (signal: Exclude<typeof Signal.Type, IdSignal>, value: strin
   return { type: "series", value, weight: signal.weight }
 }
 
-const textSignal = (signal: Exclude<typeof Signal.Type, IdSignal>): VibeSignal => {
+const textSignal = (signal: TextSignal): VibeSignal => {
   const value = signal.value ?? ""
   if (signal.type === "semantic") {
     return { text: value, type: "semantic", weight: signal.weight }
