@@ -31,7 +31,7 @@
     "@types/bun": "^1.4.3",
     "@types/three": "0.186.0",
     "alchemy": "2.0.0-beta.83",
-    "astro": "7.4.0",
+    "astro": "7.4.7",
     "charter-webfont": "4.1.0",
     "github-slugger": "2.0.0",
     "hersheytext": "2.0.0",
